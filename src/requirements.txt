@@ -1,8 +1,9 @@
-# requirements.txt
-# GUI: tkinter (standard library)
-# DB: sqlite3 (standard library) + cryptography (file encryption)
-# CSV: pandas
-# Testing: pytest
+# Budget App Requirements
+# Web UI: Flask for modern web interface
+# Database: SQLite (built-in) + cryptography for encryption
+# Data processing: pandas for CSV import/export
+# Testing: pytest for unit tests
+Flask
 cryptography
 pandas
 pytest

@@ -15,6 +15,20 @@ A Python budget app with a GUI for managing monthly budgets by category, importi
 - GUI separated from business logic
 - Comprehensive unit tests
 
+## Usage
+
+### Web Interface
+1. Start the web application: `make web`
+2. Open http://localhost:5000 in your browser
+3. Enter your database password to login
+4. Use the modern web interface with left-side navigation:
+   - **Dashboard**: Overview and quick stats
+   - **Budgets**: Set yearly budgets with interactive grid
+   - **Import CSV**: Upload transaction files with drag & drop
+   - **Uncategorized Queue**: Batch classify transactions with auto-classification
+   - **All Transactions**: View and filter transaction history
+   - **Reports**: Generate detailed spending reports with charts
+
 ### CSV Import & Auto-Classification
 1. **Command Line**: `python src/import_cli.py path/to/file.csv` (with optional interactive classification)
 2. **GUI**: Imported transactions go to "Uncategorized Queue" tab
@@ -26,7 +40,7 @@ A Python budget app with a GUI for managing monthly budgets by category, importi
 
 See `AUTO_CLASSIFY_OPTIONS.md` for detailed auto-classification setup and usage.
 
-### Budget Management
+### Legacy GUI (Tkinter)
 1. Go to the "Budgets" tab
 2. Select the year you want to set budgets for
 3. Click "Load Budgets" to see the grid
@@ -57,6 +71,7 @@ See `AUTO_CLASSIFY_OPTIONS.md` for detailed auto-classification setup and usage.
    ```
 
 ## Command Line Tools
+- **Start Web App**: `make web`
 - **Import CSV**: `python src/import_cli.py path/to/file.csv`
 - **Auto-Classification Demo**: `make auto-demo`
 - **Run Tests**: `make test`

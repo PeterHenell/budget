@@ -1,0 +1,250 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+{% block page_subtitle %}<p class="text-muted mb-0">Overview of your budget and recent activity</p>{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <!-- Quick Stats -->
+    <div class="col-md-3 mb-3">
+        <div class="stats-card">
+            <div class="stats-icon bg-primary bg-opacity-10 text-primary">
+                <i class="bi bi-wallet2"></i>
+            </div>
+            <h3 id="total-budget" class="h4 mb-1">Loading...</h3>
+            <p class="text-muted mb-0">Total Annual Budget</p>
+        </div>
+    </div>
+    
+    <div class="col-md-3 mb-3">
+        <div class="stats-card">
+            <div class="stats-icon bg-success bg-opacity-10 text-success">
+                <i class="bi bi-graph-up"></i>
+            </div>
+            <h3 id="spent-this-month" class="h4 mb-1">Loading...</h3>
+            <p class="text-muted mb-0">Spent This Month</p>
+        </div>
+    </div>
+    
+    <div class="col-md-3 mb-3">
+        <div class="stats-card">
+            <div class="stats-icon bg-warning bg-opacity-10 text-warning">
+                <i class="bi bi-question-circle"></i>
+            </div>
+            <h3 id="uncategorized-transactions" class="h4 mb-1">Loading...</h3>
+            <p class="text-muted mb-0">Uncategorized</p>
+        </div>
+    </div>
+    
+    <div class="col-md-3 mb-3">
+        <div class="stats-card">
+            <div class="stats-icon bg-info bg-opacity-10 text-info">
+                <i class="bi bi-list-ul"></i>
+            </div>
+            <h3 id="total-transactions" class="h4 mb-1">Loading...</h3>
+            <p class="text-muted mb-0">Total Transactions</p>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Quick Actions -->
+    <div class="col-md-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header">
+                <i class="bi bi-lightning-charge me-2"></i>Quick Actions
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <a href="{{ url_for('import_csv') }}" class="btn btn-primary">
+                        <i class="bi bi-upload me-2"></i>Import New Transactions
+                    </a>
+                    <a href="{{ url_for('uncategorized') }}" class="btn btn-warning">
+                        <i class="bi bi-question-circle me-2"></i>Process Uncategorized
+                        <span id="uncategorized-badge" class="badge bg-white text-warning ms-2" style="display: none;"></span>
+                    </a>
+                    <a href="{{ url_for('budgets') }}" class="btn btn-success">
+                        <i class="bi bi-pie-chart me-2"></i>Manage Budgets
+                    </a>
+                    <a href="{{ url_for('reports') }}" class="btn btn-info">
+                        <i class="bi bi-graph-up me-2"></i>View Reports
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Recent Activity -->
+    <div class="col-md-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header">
+                <i class="bi bi-clock-history me-2"></i>Recent Transactions
+            </div>
+            <div class="card-body">
+                <div id="recent-transactions">
+                    <div class="text-center">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Budget Overview -->
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-pie-chart me-2"></i>Budget Overview for <span id="currentYear">2025</span>
+            </div>
+            <div class="card-body">
+                <canvas id="budgetChart" width="400" height="150"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+    const currentYear = new Date().getFullYear();
+    const currentMonth = new Date().getMonth() + 1;
+    
+    // Update current year display
+    document.getElementById('currentYear').textContent = currentYear;
+    
+    // Load dashboard data
+    async function loadDashboardData() {
+        try {
+            // Load stats
+            const [budgetRes, monthlyRes, uncategorizedRes, transactionsRes] = await Promise.all([
+                fetch(`/api/budgets/${currentYear}`),
+                fetch(`/api/reports/monthly/${currentYear}/${currentMonth}`),
+                fetch('/api/uncategorized?per_page=1'),
+                fetch('/api/transactions?per_page=5')
+            ]);
+            
+            const budgetData = await budgetRes.json();
+            const monthlyData = await monthlyRes.json();
+            const uncategorizedData = await uncategorizedRes.json();
+            const transactionsData = await transactionsRes.json();
+            
+            // Update stats
+            const totalBudget = budgetData.budgets?.reduce((sum, b) => sum + b.yearly_budget, 0) || 0;
+            document.getElementById('total-budget').textContent = `${totalBudget.toLocaleString('sv-SE')} SEK`;
+            
+            const monthlySpent = monthlyData.report?.reduce((sum, r) => sum + r.spending, 0) || 0;
+            document.getElementById('spent-this-month').textContent = `${Math.abs(monthlySpent).toLocaleString('sv-SE')} SEK`;
+            
+            document.getElementById('uncategorized-transactions').textContent = uncategorizedData.total_uncategorized || 0;
+            document.getElementById('total-transactions').textContent = transactionsData.total || 0;
+            
+            // Update uncategorized badge
+            const badge = document.getElementById('uncategorized-badge');
+            if (uncategorizedData.total_uncategorized > 0) {
+                badge.textContent = uncategorizedData.total_uncategorized;
+                badge.style.display = 'inline-block';
+            }
+            
+            // Update recent transactions
+            updateRecentTransactions(transactionsData.transactions || []);
+            
+            // Create budget chart
+            createBudgetChart(budgetData.budgets || [], monthlyData.report || []);
+            
+        } catch (error) {
+            console.error('Error loading dashboard data:', error);
+        }
+    }
+    
+    function updateRecentTransactions(transactions) {
+        const container = document.getElementById('recent-transactions');
+        
+        if (transactions.length === 0) {
+            container.innerHTML = '<p class="text-muted">No recent transactions</p>';
+            return;
+        }
+        
+        const html = transactions.map(tx => `
+            <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom">
+                <div>
+                    <div class="fw-medium">${tx.description}</div>
+                    <small class="text-muted">${tx.date} • ${tx.category || 'Uncategorized'}</small>
+                </div>
+                <div class="text-end">
+                    <div class="${tx.amount < 0 ? 'text-danger' : 'text-success'} fw-bold">
+                        ${Math.abs(tx.amount).toLocaleString('sv-SE')} SEK
+                    </div>
+                </div>
+            </div>
+        `).join('');
+        
+        container.innerHTML = html;
+    }
+    
+    function createBudgetChart(budgets, monthlyReport) {
+        const ctx = document.getElementById('budgetChart').getContext('2d');
+        
+        // Prepare data
+        const categories = budgets.map(b => b.category);
+        const budgetAmounts = budgets.map(b => b.yearly_budget / 12); // Monthly budget
+        const spentAmounts = budgets.map(b => {
+            const reportItem = monthlyReport.find(r => r.category === b.category);
+            return Math.abs(reportItem?.spending || 0);
+        });
+        
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: categories,
+                datasets: [{
+                    label: 'Monthly Budget',
+                    data: budgetAmounts,
+                    backgroundColor: 'rgba(52, 152, 219, 0.3)',
+                    borderColor: 'rgba(52, 152, 219, 1)',
+                    borderWidth: 2
+                }, {
+                    label: 'Spent This Month',
+                    data: spentAmounts,
+                    backgroundColor: 'rgba(231, 76, 60, 0.3)',
+                    borderColor: 'rgba(231, 76, 60, 1)',
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'top',
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) {
+                                return value.toLocaleString('sv-SE') + ' SEK';
+                            }
+                        }
+                    }
+                },
+                interaction: {
+                    intersect: false,
+                    mode: 'index'
+                }
+            }
+        });
+    }
+    
+    // Load data when page loads
+    document.addEventListener('DOMContentLoaded', loadDashboardData);
+</script>
+{% endblock %}

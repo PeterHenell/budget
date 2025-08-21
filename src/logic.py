@@ -216,6 +216,91 @@ class BudgetLogic:
         row = c.fetchone()
         return row[0] if row else 0.0
 
+    def set_yearly_budget(self, category, year, amount):
+        """Set yearly budget for a category (alias for set_budget)"""
+        return self.set_budget(category, year, amount)
+
+    def get_yearly_budgets(self, year):
+        """Get all yearly budgets for a specific year"""
+        c = self.conn.cursor()
+        c.execute("""
+            SELECT c.name, b.amount
+            FROM categories c
+            LEFT JOIN budgets b ON c.id = b.category_id AND b.year = ?
+            ORDER BY c.name
+        """, (year,))
+        
+        budgets = {}
+        for row in c.fetchall():
+            category_name = row[0]
+            amount = row[1] if row[1] is not None else 0.0
+            budgets[category_name] = amount
+        
+        return budgets
+
+    def add_transaction(self, date, description, amount, category_name, verifikationsnummer=None):
+        """Add a single transaction for testing purposes"""
+        import datetime
+        
+        # Parse date and extract year/month
+        if isinstance(date, str):
+            date_obj = datetime.datetime.strptime(date, '%Y-%m-%d')
+        else:
+            date_obj = date
+            
+        year = date_obj.year
+        month = date_obj.month
+        
+        # Get category ID
+        c = self.conn.cursor()
+        c.execute("SELECT id FROM categories WHERE name=?", (category_name,))
+        cat_row = c.fetchone()
+        if not cat_row:
+            raise ValueError(f"Category '{category_name}' not found")
+        category_id = cat_row[0]
+        
+        # Generate verification number if not provided
+        if verifikationsnummer is None:
+            verifikationsnummer = f"TEST{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
+        
+        # Insert transaction
+        c.execute("""
+            INSERT INTO transactions (verifikationsnummer, date, description, amount, year, month, category_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (verifikationsnummer, date, description, amount, year, month, category_id))
+        
+        self.conn.commit()
+        self._mark_changes()
+
+    def get_transactions(self, category=None, limit=None, offset=0):
+        """Get all transactions, optionally filtered by category"""
+        c = self.conn.cursor()
+        
+        if category:
+            query = """
+                SELECT t.id, t.verifikationsnummer, t.date, t.description, t.amount, c.name, t.year, t.month
+                FROM transactions t
+                JOIN categories c ON t.category_id = c.id
+                WHERE c.name = ?
+                ORDER BY t.date DESC, t.id DESC
+            """
+            params = [category]
+        else:
+            query = """
+                SELECT t.id, t.verifikationsnummer, t.date, t.description, t.amount, c.name, t.year, t.month
+                FROM transactions t
+                JOIN categories c ON t.category_id = c.id
+                ORDER BY t.date DESC, t.id DESC
+            """
+            params = []
+        
+        if limit:
+            query += " LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
+        
+        c.execute(query, params)
+        return c.fetchall()
+
     def import_csv(self, csv_path):
         try:
             # Try semicolon first (Swedish format), then comma
@@ -380,6 +465,14 @@ class BudgetLogic:
             for row in c.fetchall()
         ]
         
+    def generate_monthly_report(self, year, month):
+        """Generate monthly report data for web API (alias for get_spending_report)"""
+        return self.get_spending_report(year, month)
+    
+    def generate_yearly_report(self, year):
+        """Generate yearly report data for web API (alias for get_yearly_spending_report)"""
+        return self.get_yearly_spending_report(year)
+    
     def get_yearly_spending_report(self, year):
         """Get spending vs yearly budget report for entire year"""
         c = self.conn.cursor()

@@ -1,0 +1,450 @@
+{% extends "base.html" %}
+
+{% block title %}Import CSV{% endblock %}
+{% block page_title %}Import Transactions{% endblock %}
+{% block page_subtitle %}<p class="text-muted mb-0">Upload CSV files to import transaction data</p>{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8 mx-auto">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-upload me-2"></i>Upload CSV File
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <!-- Upload Area -->
+                    <div class="col-md-6">
+                        <div id="uploadArea" class="upload-area p-5 text-center border border-2 border-dashed rounded">
+                            <i class="bi bi-cloud-upload fs-1 text-muted mb-3"></i>
+                            <h5>Drag & Drop CSV File</h5>
+                            <p class="text-muted">or click to browse</p>
+                            <input type="file" id="csvFile" accept=".csv" class="d-none">
+                            <button type="button" class="btn btn-outline-primary" onclick="document.getElementById('csvFile').click()">
+                                <i class="bi bi-folder me-2"></i>Browse Files
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Import Status -->
+                    <div class="col-md-6">
+                        <h6 class="mb-3">Import Status</h6>
+                        
+                        <div id="importStatus" class="import-status">
+                            <div class="status-item">
+                                <i class="bi bi-circle text-muted"></i>
+                                <span>Select a CSV file to begin</span>
+                            </div>
+                        </div>
+                        
+                        <div id="importProgress" style="display: none;">
+                            <div class="progress mb-3">
+                                <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar"></div>
+                            </div>
+                        </div>
+                        
+                        <div id="importResults" style="display: none;" class="mt-3">
+                            <!-- Results will be shown here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- CSV Format Info -->
+        <div class="card mt-4">
+            <div class="card-header">
+                <i class="bi bi-info-circle me-2"></i>Supported CSV Format
+            </div>
+            <div class="card-body">
+                <p>The CSV file should contain the following columns (Swedish bank format):</p>
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Column</th>
+                                <th>Description</th>
+                                <th>Example</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>Verifikationsnummer</code></td>
+                                <td>Transaction reference number</td>
+                                <td>12345678</td>
+                            </tr>
+                            <tr>
+                                <td><code>Bokföringsdatum</code></td>
+                                <td>Transaction date</td>
+                                <td>2025-08-21</td>
+                            </tr>
+                            <tr>
+                                <td><code>Text</code></td>
+                                <td>Transaction description</td>
+                                <td>ICA SUPERMARKET STOCKHOLM</td>
+                            </tr>
+                            <tr>
+                                <td><code>Belopp</code></td>
+                                <td>Amount (negative for expenses)</td>
+                                <td>-125.50</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div class="alert alert-info mt-3">
+                    <i class="bi bi-lightbulb me-2"></i>
+                    <strong>Pro Tip:</strong> All imported transactions will initially be placed in the "Uncategorized" queue. 
+                    You can then use the auto-classification feature to categorize them automatically, or classify them manually.
+                </div>
+                
+                <div class="alert alert-warning mt-2">
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    <strong>Note:</strong> CSV files will be automatically archived after successful import to prevent duplicate imports.
+                </div>
+            </div>
+        </div>
+        
+        <!-- Quick Actions -->
+        <div class="card mt-4">
+            <div class="card-header">
+                <i class="bi bi-lightning-charge me-2"></i>After Import
+            </div>
+            <div class="card-body">
+                <p class="text-muted mb-3">Once your transactions are imported, you can:</p>
+                <div class="d-grid gap-2 d-md-flex">
+                    <a href="{{ url_for('uncategorized') }}" class="btn btn-warning">
+                        <i class="bi bi-question-circle me-2"></i>Categorize Transactions
+                    </a>
+                    <button type="button" class="btn btn-success" onclick="startAutoClassification()" disabled id="autoClassifyBtn">
+                        <i class="bi bi-magic me-2"></i>Auto-Classify
+                    </button>
+                    <a href="{{ url_for('transactions') }}" class="btn btn-info">
+                        <i class="bi bi-list-ul me-2"></i>View All Transactions
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Auto-Classification Modal -->
+<div class="modal fade" id="autoClassifyModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Auto-Classification</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="confidenceThreshold" class="form-label">Confidence Threshold</label>
+                    <input type="range" class="form-range" id="confidenceThreshold" min="50" max="95" value="80" step="5">
+                    <div class="d-flex justify-content-between">
+                        <small class="text-muted">50% (More classifications)</small>
+                        <small><strong><span id="thresholdValue">80</span>%</strong></small>
+                        <small class="text-muted">95% (More conservative)</small>
+                    </div>
+                </div>
+                
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle me-2"></i>
+                    Higher threshold = more conservative classification. Lower threshold = more automatic classifications but potentially less accurate.
+                </div>
+                
+                <div id="autoClassifyStatus" class="mt-3" style="display: none;">
+                    <!-- Status will be shown here -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-success" onclick="runAutoClassification()">
+                    <i class="bi bi-magic me-2"></i>Start Auto-Classification
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .upload-area {
+        transition: all 0.3s ease;
+        cursor: pointer;
+        background-color: #f8f9fa;
+    }
+    
+    .upload-area:hover {
+        background-color: #e9ecef;
+        border-color: #0d6efd !important;
+    }
+    
+    .upload-area.dragover {
+        background-color: #e7f3ff;
+        border-color: #0d6efd !important;
+        transform: scale(1.02);
+    }
+    
+    .status-item {
+        display: flex;
+        align-items: center;
+        margin-bottom: 0.5rem;
+    }
+    
+    .status-item i {
+        margin-right: 0.5rem;
+        width: 16px;
+    }
+    
+    .import-status {
+        max-height: 200px;
+        overflow-y: auto;
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let importedCount = 0;
+    
+    document.addEventListener('DOMContentLoaded', function() {
+        const uploadArea = document.getElementById('uploadArea');
+        const csvFile = document.getElementById('csvFile');
+        const thresholdSlider = document.getElementById('confidenceThreshold');
+        const thresholdValue = document.getElementById('thresholdValue');
+        
+        // Update threshold value display
+        thresholdSlider.addEventListener('input', function() {
+            thresholdValue.textContent = this.value;
+        });
+        
+        // File input change
+        csvFile.addEventListener('change', handleFileSelect);
+        
+        // Drag and drop functionality
+        uploadArea.addEventListener('click', () => csvFile.click());
+        uploadArea.addEventListener('dragover', handleDragOver);
+        uploadArea.addEventListener('dragleave', handleDragLeave);
+        uploadArea.addEventListener('drop', handleFileDrop);
+    });
+    
+    function handleDragOver(e) {
+        e.preventDefault();
+        document.getElementById('uploadArea').classList.add('dragover');
+    }
+    
+    function handleDragLeave(e) {
+        e.preventDefault();
+        document.getElementById('uploadArea').classList.remove('dragover');
+    }
+    
+    function handleFileDrop(e) {
+        e.preventDefault();
+        document.getElementById('uploadArea').classList.remove('dragover');
+        
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+            document.getElementById('csvFile').files = files;
+            handleFileSelect({ target: { files } });
+        }
+    }
+    
+    function handleFileSelect(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        // Validate file type
+        if (!file.name.toLowerCase().endsWith('.csv')) {
+            showStatus('error', 'Please select a CSV file');
+            return;
+        }
+        
+        showStatus('info', `Selected: ${file.name} (${formatFileSize(file.size)})`);
+        showStatus('info', 'Click upload to import transactions');
+        
+        // Start import
+        importCSV(file);
+    }
+    
+    async function importCSV(file) {
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        // Show progress
+        document.getElementById('importProgress').style.display = 'block';
+        updateProgress(0, 'Preparing import...');
+        
+        try {
+            showStatus('info', 'Uploading file...');
+            updateProgress(30, 'Uploading...');
+            
+            const response = await fetch('/api/import', {
+                method: 'POST',
+                body: formData
+            });
+            
+            updateProgress(70, 'Processing...');
+            
+            const data = await response.json();
+            
+            if (data.error) {
+                throw new Error(data.error);
+            }
+            
+            updateProgress(100, 'Complete!');
+            
+            // Show success
+            importedCount = data.count;
+            showImportResults(data);
+            
+            // Enable auto-classify button
+            document.getElementById('autoClassifyBtn').disabled = false;
+            
+        } catch (error) {
+            console.error('Import error:', error);
+            showStatus('error', 'Import failed: ' + error.message);
+            updateProgress(0, 'Failed');
+        }
+    }
+    
+    function showImportResults(data) {
+        const resultsDiv = document.getElementById('importResults');
+        resultsDiv.style.display = 'block';
+        
+        resultsDiv.innerHTML = `
+            <div class="alert alert-success">
+                <i class="bi bi-check-circle me-2"></i>
+                <strong>Import Successful!</strong>
+                <br>
+                Imported ${data.count} transactions into the uncategorized queue.
+            </div>
+            
+            <div class="d-grid gap-2">
+                <a href="/uncategorized" class="btn btn-warning">
+                    <i class="bi bi-question-circle me-2"></i>Process Uncategorized (${data.count})
+                </a>
+                <button type="button" class="btn btn-success" onclick="startAutoClassification()">
+                    <i class="bi bi-magic me-2"></i>Auto-Classify Transactions
+                </button>
+            </div>
+        `;
+        
+        showStatus('success', `Successfully imported ${data.count} transactions`);
+    }
+    
+    function updateProgress(percent, message) {
+        const progressBar = document.getElementById('progressBar');
+        progressBar.style.width = `${percent}%`;
+        progressBar.setAttribute('aria-valuenow', percent);
+        progressBar.textContent = message;
+        
+        if (percent === 100) {
+            progressBar.classList.remove('progress-bar-animated');
+            setTimeout(() => {
+                document.getElementById('importProgress').style.display = 'none';
+            }, 2000);
+        }
+    }
+    
+    function showStatus(type, message) {
+        const statusDiv = document.getElementById('importStatus');
+        const iconClass = {
+            'info': 'bi-info-circle text-info',
+            'success': 'bi-check-circle text-success',
+            'error': 'bi-x-circle text-danger',
+            'warning': 'bi-exclamation-triangle text-warning'
+        }[type] || 'bi-circle text-muted';
+        
+        const statusItem = document.createElement('div');
+        statusItem.className = 'status-item';
+        statusItem.innerHTML = `<i class="bi ${iconClass}"></i><span>${message}</span>`;
+        
+        statusDiv.appendChild(statusItem);
+        
+        // Auto-scroll to bottom
+        statusDiv.scrollTop = statusDiv.scrollHeight;
+        
+        // Limit status items to 10
+        while (statusDiv.children.length > 10) {
+            statusDiv.removeChild(statusDiv.firstChild);
+        }
+    }
+    
+    function startAutoClassification() {
+        if (importedCount === 0) {
+            alert('No transactions available for auto-classification. Please import a CSV file first.');
+            return;
+        }
+        
+        const modal = new bootstrap.Modal(document.getElementById('autoClassifyModal'));
+        modal.show();
+    }
+    
+    async function runAutoClassification() {
+        const threshold = document.getElementById('confidenceThreshold').value / 100;
+        const statusDiv = document.getElementById('autoClassifyStatus');
+        
+        statusDiv.style.display = 'block';
+        statusDiv.innerHTML = `
+            <div class="d-flex align-items-center">
+                <div class="spinner-border spinner-border-sm me-3" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <span>Running auto-classification...</span>
+            </div>
+        `;
+        
+        try {
+            const response = await fetch('/api/auto-classify', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    confidence_threshold: threshold
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (data.error) {
+                throw new Error(data.error);
+            }
+            
+            statusDiv.innerHTML = `
+                <div class="alert alert-success">
+                    <i class="bi bi-check-circle me-2"></i>
+                    <strong>Auto-classification complete!</strong>
+                    <br>
+                    Classified: ${data.classified} transactions<br>
+                    Suggestions: ${data.suggestions} transactions<br>
+                    Remaining uncategorized: ${data.remaining}
+                </div>
+            `;
+            
+            // Update button state
+            if (data.remaining === 0) {
+                document.getElementById('autoClassifyBtn').disabled = true;
+            }
+            
+        } catch (error) {
+            console.error('Auto-classification error:', error);
+            statusDiv.innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="bi bi-x-circle me-2"></i>
+                    Auto-classification failed: ${error.message}
+                </div>
+            `;
+        }
+    }
+    
+    function formatFileSize(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,413 @@
+{% extends "base.html" %}
+
+{% block title %}Reports{% endblock %}
+{% block page_title %}Financial Reports{% endblock %}
+{% block page_subtitle %}<p class="text-muted mb-0">Analyze your spending patterns and budget performance</p>{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-calendar-range me-2"></i>Report Parameters
+            </div>
+            <div class="card-body">
+                <div class="row align-items-end">
+                    <div class="col-md-3">
+                        <label for="reportYear" class="form-label">Year</label>
+                        <select class="form-select" id="reportYear">
+                            <option value="2023">2023</option>
+                            <option value="2024">2024</option>
+                            <option value="2025" selected>2025</option>
+                            <option value="2026">2026</option>
+                            <option value="2027">2027</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="reportMonth" class="form-label">Month (optional)</label>
+                        <select class="form-select" id="reportMonth">
+                            <option value="">All months (yearly report)</option>
+                            <option value="1">January</option>
+                            <option value="2">February</option>
+                            <option value="3">March</option>
+                            <option value="4">April</option>
+                            <option value="5">May</option>
+                            <option value="6">June</option>
+                            <option value="7">July</option>
+                            <option value="8" selected>August</option>
+                            <option value="9">September</option>
+                            <option value="10">October</option>
+                            <option value="11">November</option>
+                            <option value="12">December</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <button type="button" class="btn btn-primary" onclick="generateReport()">
+                            <i class="bi bi-graph-up me-2"></i>Generate Report
+                        </button>
+                    </div>
+                    <div class="col-md-3">
+                        <button type="button" class="btn btn-outline-secondary" onclick="exportReport()" disabled id="exportBtn">
+                            <i class="bi bi-download me-2"></i>Export
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <div>
+                    <i class="bi bi-table me-2"></i>Report Results
+                </div>
+                <div id="reportTitle" class="text-muted">
+                    Select year and month to generate a report
+                </div>
+            </div>
+            <div class="card-body">
+                <div id="reportLoading" class="text-center py-4" style="display: none;">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2 text-muted">Generating report...</p>
+                </div>
+                
+                <div id="reportContent" style="display: none;">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width: 25%;">Category</th>
+                                    <th style="width: 20%;">Budget</th>
+                                    <th style="width: 20%;">Spent</th>
+                                    <th style="width: 20%;">Difference</th>
+                                    <th style="width: 15%;">Usage</th>
+                                </tr>
+                            </thead>
+                            <tbody id="reportTableBody">
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <div class="mt-4 p-3 bg-light rounded">
+                        <div class="row">
+                            <div class="col-md-3">
+                                <div class="text-center">
+                                    <h5 class="text-primary mb-1" id="totalBudget">0 SEK</h5>
+                                    <small class="text-muted">Total Budget</small>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="text-center">
+                                    <h5 class="text-danger mb-1" id="totalSpent">0 SEK</h5>
+                                    <small class="text-muted">Total Spent</small>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="text-center">
+                                    <h5 class="mb-1" id="totalDifference">0 SEK</h5>
+                                    <small class="text-muted">Difference</small>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="text-center">
+                                    <h5 class="mb-1" id="totalUsage">0%</h5>
+                                    <small class="text-muted">Overall Usage</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="noReportData" class="text-center py-5">
+                    <i class="bi bi-graph-up fs-1 text-muted"></i>
+                    <h4 class="mt-3 text-muted">Ready to Generate Reports</h4>
+                    <p class="text-muted">Select a year and optionally a month to view your budget performance.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Chart Section -->
+<div class="row mt-4" id="chartSection" style="display: none;">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-pie-chart me-2"></i>Spending Breakdown
+            </div>
+            <div class="card-body">
+                <canvas id="spendingChart" width="400" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+    let currentReportData = null;
+    let spendingChart = null;
+    
+    document.addEventListener('DOMContentLoaded', function() {
+        // Set current month as default
+        const currentMonth = new Date().getMonth() + 1;
+        document.getElementById('reportMonth').value = currentMonth;
+    });
+    
+    async function generateReport() {
+        const year = document.getElementById('reportYear').value;
+        const month = document.getElementById('reportMonth').value;
+        
+        const loadingDiv = document.getElementById('reportLoading');
+        const contentDiv = document.getElementById('reportContent');
+        const noDataDiv = document.getElementById('noReportData');
+        const chartSection = document.getElementById('chartSection');
+        const reportTitle = document.getElementById('reportTitle');
+        
+        // Show loading
+        loadingDiv.style.display = 'block';
+        contentDiv.style.display = 'none';
+        noDataDiv.style.display = 'none';
+        chartSection.style.display = 'none';
+        
+        try {
+            const endpoint = month ? 
+                `/api/reports/monthly/${year}/${month}` : 
+                `/api/reports/yearly/${year}`;
+            
+            const response = await fetch(endpoint);
+            const data = await response.json();
+            
+            if (data.error) {
+                throw new Error(data.error);
+            }
+            
+            currentReportData = data.report || [];
+            
+            // Update title
+            const reportType = month ? 
+                `Monthly Report - ${getMonthName(month)} ${year}` :
+                `Yearly Report - ${year}`;
+            reportTitle.textContent = reportType;
+            
+            // Hide loading
+            loadingDiv.style.display = 'none';
+            
+            if (currentReportData.length > 0) {
+                renderReportTable();
+                renderSpendingChart();
+                contentDiv.style.display = 'block';
+                chartSection.style.display = 'block';
+                document.getElementById('exportBtn').disabled = false;
+            } else {
+                noDataDiv.style.display = 'block';
+                document.getElementById('exportBtn').disabled = true;
+            }
+            
+        } catch (error) {
+            console.error('Error generating report:', error);
+            loadingDiv.style.display = 'none';
+            noDataDiv.style.display = 'block';
+            showToast('Error generating report: ' + error.message, 'danger');
+        }
+    }
+    
+    function renderReportTable() {
+        const tbody = document.getElementById('reportTableBody');
+        let totalBudget = 0;
+        let totalSpent = 0;
+        
+        const rows = currentReportData.map(item => {
+            const budget = item.budget || 0;
+            const spending = Math.abs(item.spending || 0);
+            const difference = budget - spending;
+            const percentage = budget > 0 ? (spending / budget * 100) : 0;
+            
+            totalBudget += budget;
+            totalSpent += spending;
+            
+            const diffClass = difference >= 0 ? 'text-success' : 'text-danger';
+            const usageClass = percentage > 100 ? 'text-danger' : percentage > 80 ? 'text-warning' : 'text-success';
+            
+            return `
+                <tr>
+                    <td class="fw-medium">${item.category}</td>
+                    <td>${budget.toLocaleString('sv-SE')} SEK</td>
+                    <td class="text-danger">${spending.toLocaleString('sv-SE')} SEK</td>
+                    <td class="${diffClass} fw-bold">${Math.abs(difference).toLocaleString('sv-SE')} SEK</td>
+                    <td>
+                        <div class="d-flex align-items-center">
+                            <div class="progress flex-grow-1 me-2" style="height: 6px;">
+                                <div class="progress-bar ${usageClass.replace('text-', 'bg-')}" 
+                                     style="width: ${Math.min(percentage, 100)}%"></div>
+                            </div>
+                            <span class="${usageClass} fw-bold" style="min-width: 40px;">
+                                ${percentage.toFixed(0)}%
+                            </span>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+        
+        tbody.innerHTML = rows;
+        
+        // Update totals
+        const totalDifference = totalBudget - totalSpent;
+        const totalUsage = totalBudget > 0 ? (totalSpent / totalBudget * 100) : 0;
+        
+        document.getElementById('totalBudget').textContent = `${totalBudget.toLocaleString('sv-SE')} SEK`;
+        document.getElementById('totalSpent').textContent = `${totalSpent.toLocaleString('sv-SE')} SEK`;
+        document.getElementById('totalDifference').textContent = `${Math.abs(totalDifference).toLocaleString('sv-SE')} SEK`;
+        document.getElementById('totalDifference').className = totalDifference >= 0 ? 'text-success mb-1' : 'text-danger mb-1';
+        document.getElementById('totalUsage').textContent = `${totalUsage.toFixed(1)}%`;
+        document.getElementById('totalUsage').className = totalUsage > 100 ? 'text-danger mb-1' : totalUsage > 80 ? 'text-warning mb-1' : 'text-success mb-1';
+    }
+    
+    function renderSpendingChart() {
+        const ctx = document.getElementById('spendingChart').getContext('2d');
+        
+        // Destroy existing chart
+        if (spendingChart) {
+            spendingChart.destroy();
+        }
+        
+        // Prepare data
+        const categories = currentReportData.map(item => item.category);
+        const spending = currentReportData.map(item => Math.abs(item.spending || 0));
+        const colors = generateColors(categories.length);
+        
+        spendingChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: categories,
+                datasets: [{
+                    data: spending,
+                    backgroundColor: colors.backgrounds,
+                    borderColor: colors.borders,
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'right'
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const value = context.parsed;
+                                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                const percentage = ((value / total) * 100).toFixed(1);
+                                return `${context.label}: ${value.toLocaleString('sv-SE')} SEK (${percentage}%)`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+    
+    function generateColors(count) {
+        const backgrounds = [];
+        const borders = [];
+        
+        const baseColors = [
+            'rgba(255, 99, 132, 0.8)', 'rgba(54, 162, 235, 0.8)',
+            'rgba(255, 205, 86, 0.8)', 'rgba(75, 192, 192, 0.8)',
+            'rgba(153, 102, 255, 0.8)', 'rgba(255, 159, 64, 0.8)',
+            'rgba(199, 199, 199, 0.8)', 'rgba(83, 102, 255, 0.8)'
+        ];
+        
+        const borderColors = [
+            'rgba(255, 99, 132, 1)', 'rgba(54, 162, 235, 1)',
+            'rgba(255, 205, 86, 1)', 'rgba(75, 192, 192, 1)',
+            'rgba(153, 102, 255, 1)', 'rgba(255, 159, 64, 1)',
+            'rgba(199, 199, 199, 1)', 'rgba(83, 102, 255, 1)'
+        ];
+        
+        for (let i = 0; i < count; i++) {
+            backgrounds.push(baseColors[i % baseColors.length]);
+            borders.push(borderColors[i % borderColors.length]);
+        }
+        
+        return { backgrounds, borders };
+    }
+    
+    function exportReport() {
+        if (!currentReportData) return;
+        
+        // Simple CSV export
+        const year = document.getElementById('reportYear').value;
+        const month = document.getElementById('reportMonth').value;
+        
+        const headers = ['Category', 'Budget', 'Spent', 'Difference', 'Usage %'];
+        const rows = currentReportData.map(item => {
+            const budget = item.budget || 0;
+            const spending = Math.abs(item.spending || 0);
+            const difference = budget - spending;
+            const percentage = budget > 0 ? (spending / budget * 100) : 0;
+            
+            return [
+                item.category,
+                budget,
+                spending,
+                difference,
+                percentage.toFixed(2)
+            ];
+        });
+        
+        const csvContent = [headers, ...rows]
+            .map(row => row.join(','))
+            .join('\n');
+        
+        const blob = new Blob([csvContent], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `budget-report-${year}${month ? `-${month.padStart(2, '0')}` : ''}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+        
+        showToast('Report exported successfully', 'success');
+    }
+    
+    function getMonthName(monthNumber) {
+        const months = [
+            'January', 'February', 'March', 'April', 'May', 'June',
+            'July', 'August', 'September', 'October', 'November', 'December'
+        ];
+        return months[monthNumber - 1];
+    }
+    
+    function showToast(message, type) {
+        const toast = document.createElement('div');
+        toast.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+        toast.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+        toast.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        
+        document.body.appendChild(toast);
+        
+        setTimeout(() => {
+            if (toast.parentNode) {
+                toast.remove();
+            }
+        }, 5000);
+    }
+</script>
+{% endblock %}
