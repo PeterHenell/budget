@@ -1,0 +1,8 @@
+# requirements.txt
+# GUI: tkinter (standard library)
+# DB: sqlite3 (standard library) + cryptography (file encryption)
+# CSV: pandas
+# Testing: pytest
+cryptography
+pandas
+pytest
