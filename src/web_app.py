@@ -45,6 +45,25 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
+def admin_required(f):
+    """Decorator to require admin role for routes"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session.get('logged_in') or not session.get('username'):
+            return redirect(url_for('login'))
+        
+        # Check if user is admin
+        if not init_logic():
+            flash('Database connection failed', 'error')
+            return redirect(url_for('index'))
+        
+        if not logic.db.is_admin(session.get('username')):
+            flash('Access denied. Admin privileges required.', 'error')
+            return redirect(url_for('index'))
+        
+        return f(*args, **kwargs)
+    return decorated_function
+
 def init_logic():
     """Initialize database connection"""
     global logic
@@ -74,8 +93,14 @@ def login():
         
         # Authenticate user
         if logic.db.authenticate_user(username, password):
+            # Get user details including role
+            user_info = logic.db.get_user(username)
+            
             session['logged_in'] = True
             session['username'] = username
+            session['user_role'] = user_info.get('role', 'user') if user_info else 'user'
+            session['is_admin'] = logic.db.is_admin(username)
+            
             flash(f'Welcome back, {username}!', 'success')
             return redirect(url_for('index'))
         else:
@@ -570,6 +595,90 @@ def api_import():
     # This could handle AJAX CSV imports
     # For now, redirect to the existing upload handler
     return jsonify({'error': 'Use /upload endpoint for file uploads'}), 501
+
+@app.route('/manage_users')
+@admin_required
+def manage_users():
+    """Admin page for managing users"""
+    try:
+        if not init_logic():
+            flash('Database connection failed', 'error')
+            return redirect(url_for('index'))
+        
+        users = logic.db.list_users()
+        return render_template('manage_users.html', users=users)
+    except Exception as e:
+        flash(f'Error loading user management page: {e}', 'error')
+        return redirect(url_for('index'))
+
+@app.route('/api/users/<username>/role', methods=['POST'])
+@admin_required
+def update_user_role_api(username):
+    """API endpoint to update user role"""
+    try:
+        if not init_logic():
+            return jsonify({'error': 'Database connection failed'}), 500
+            
+        data = request.json
+        new_role = data.get('role')
+        
+        if new_role not in ['user', 'admin']:
+            return jsonify({'error': 'Invalid role. Must be user or admin'}), 400
+            
+        # Prevent admin from removing their own admin role
+        if username == session.get('username') and new_role == 'user':
+            return jsonify({'error': 'Cannot remove admin role from yourself'}), 400
+            
+        success = logic.db.update_user_role(username, new_role)
+        if success:
+            return jsonify({'message': f'User role updated to {new_role}'})
+        else:
+            return jsonify({'error': 'Failed to update user role'}), 500
+            
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/users/<username>/toggle', methods=['POST'])
+@admin_required
+def toggle_user_status_api(username):
+    """API endpoint to toggle user active status"""
+    try:
+        if not init_logic():
+            return jsonify({'error': 'Database connection failed'}), 500
+            
+        # Prevent admin from deactivating themselves
+        if username == session.get('username'):
+            return jsonify({'error': 'Cannot deactivate your own account'}), 400
+            
+        success = logic.db.toggle_user_status(username)
+        if success:
+            return jsonify({'message': 'User status toggled successfully'})
+        else:
+            return jsonify({'error': 'Failed to toggle user status'}), 500
+            
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/users/<username>', methods=['DELETE'])
+@admin_required
+def delete_user_api(username):
+    """API endpoint to delete a user"""
+    try:
+        if not init_logic():
+            return jsonify({'error': 'Database connection failed'}), 500
+            
+        # Prevent admin from deleting themselves
+        if username == session.get('username'):
+            return jsonify({'error': 'Cannot delete your own account'}), 400
+            
+        success = logic.db.delete_user(username)
+        if success:
+            return jsonify({'message': 'User deleted successfully'})
+        else:
+            return jsonify({'error': 'Failed to delete user'}), 500
+            
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     port = int(os.getenv('FLASK_PORT', 5000))

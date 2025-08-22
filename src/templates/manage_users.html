@@ -1,0 +1,277 @@
+{% extends "base.html" %}
+
+{% block title %}Manage Users{% endblock %}
+
+{% block page_title %}User Management{% endblock %}
+
+{% block page_subtitle %}
+<p class="text-muted mb-0">Manage user accounts and permissions</p>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-people me-2"></i>Users
+                </h5>
+                <small class="text-muted">{{ users|length }} user(s) total</small>
+            </div>
+            <div class="card-body">
+                {% if users %}
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Username</th>
+                                <th>Role</th>
+                                <th>Status</th>
+                                <th>Created</th>
+                                <th>Last Login</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for user in users %}
+                            <tr>
+                                <td>
+                                    <div class="d-flex align-items-center">
+                                        <i class="bi bi-person-circle me-2 text-muted"></i>
+                                        <strong>{{ user.username }}</strong>
+                                        {% if user.username == session.username %}
+                                        <span class="badge bg-primary ms-2">You</span>
+                                        {% endif %}
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="badge bg-{{ 'success' if user.role == 'admin' else 'secondary' }}">
+                                        {{ user.role|title }}
+                                    </span>
+                                </td>
+                                <td>
+                                    <span class="badge bg-{{ 'success' if user.get('active', True) else 'danger' }}">
+                                        {{ 'Active' if user.get('active', True) else 'Inactive' }}
+                                    </span>
+                                </td>
+                                <td>
+                                    <small class="text-muted">
+                                        {{ user.get('created_at', 'Unknown') }}
+                                    </small>
+                                </td>
+                                <td>
+                                    <small class="text-muted">
+                                        {{ user.get('last_login', 'Never') }}
+                                    </small>
+                                </td>
+                                <td>
+                                    <div class="btn-group" role="group">
+                                        <!-- Role Toggle Button -->
+                                        {% if user.username != session.username %}
+                                        <button type="button" 
+                                                class="btn btn-sm btn-outline-primary" 
+                                                onclick="toggleUserRole('{{ user.username }}', '{{ user.role }}')"
+                                                title="Toggle Role">
+                                            <i class="bi bi-shield-check"></i>
+                                        </button>
+                                        
+                                        <!-- Status Toggle Button -->
+                                        <button type="button" 
+                                                class="btn btn-sm btn-outline-warning" 
+                                                onclick="toggleUserStatus('{{ user.username }}')"
+                                                title="Toggle Active/Inactive">
+                                            <i class="bi bi-toggle-{{ 'on' if user.get('active', True) else 'off' }}"></i>
+                                        </button>
+                                        
+                                        <!-- Delete Button -->
+                                        <button type="button" 
+                                                class="btn btn-sm btn-outline-danger" 
+                                                onclick="confirmDeleteUser('{{ user.username }}')"
+                                                title="Delete User">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                        {% else %}
+                                        <span class="text-muted small">Cannot modify own account</span>
+                                        {% endif %}
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-4">
+                    <i class="bi bi-people display-1 text-muted"></i>
+                    <h5 class="mt-3">No users found</h5>
+                    <p class="text-muted">There are no users in the system.</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Role Change Modal -->
+<div class="modal fade" id="roleModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Change User Role</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Change role for user <strong id="roleUsername"></strong>?</p>
+                <div class="mb-3">
+                    <label class="form-label">New Role:</label>
+                    <select class="form-select" id="newRole">
+                        <option value="user">User</option>
+                        <option value="admin">Admin</option>
+                    </select>
+                </div>
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    Changing user roles will affect their access permissions.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="updateUserRole()">Change Role</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete User Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Delete User</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-danger">
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    <strong>Warning!</strong> This action cannot be undone.
+                </div>
+                <p>Are you sure you want to delete user <strong id="deleteUsername"></strong>?</p>
+                <p class="text-muted">This will permanently remove the user and all their data.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" onclick="deleteUser()">Delete User</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentUsername = '';
+
+function toggleUserRole(username, currentRole) {
+    currentUsername = username;
+    document.getElementById('roleUsername').textContent = username;
+    document.getElementById('newRole').value = currentRole === 'admin' ? 'user' : 'admin';
+    
+    const modal = new bootstrap.Modal(document.getElementById('roleModal'));
+    modal.show();
+}
+
+function updateUserRole() {
+    const newRole = document.getElementById('newRole').value;
+    
+    fetch(`/api/users/${currentUsername}/role`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ role: newRole })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.message) {
+            showAlert('success', data.message);
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showAlert('danger', data.error || 'Failed to update user role');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showAlert('danger', 'Network error occurred');
+    });
+    
+    const modal = bootstrap.Modal.getInstance(document.getElementById('roleModal'));
+    modal.hide();
+}
+
+function toggleUserStatus(username) {
+    fetch(`/api/users/${username}/toggle`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.message) {
+            showAlert('success', data.message);
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showAlert('danger', data.error || 'Failed to toggle user status');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showAlert('danger', 'Network error occurred');
+    });
+}
+
+function confirmDeleteUser(username) {
+    currentUsername = username;
+    document.getElementById('deleteUsername').textContent = username;
+    
+    const modal = new bootstrap.Modal(document.getElementById('deleteModal'));
+    modal.show();
+}
+
+function deleteUser() {
+    fetch(`/api/users/${currentUsername}`, {
+        method: 'DELETE',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.message) {
+            showAlert('success', data.message);
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showAlert('danger', data.error || 'Failed to delete user');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showAlert('danger', 'Network error occurred');
+    });
+    
+    const modal = bootstrap.Modal.getInstance(document.getElementById('deleteModal'));
+    modal.hide();
+}
+
+function showAlert(type, message) {
+    const alertHtml = `
+        <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    `;
+    
+    // Insert at the top of content-body
+    const contentBody = document.querySelector('.content-body');
+    contentBody.insertAdjacentHTML('afterbegin', alertHtml);
+}
+</script>
+{% endblock %}

@@ -1,9 +1,25 @@
 """
 Database layer for the Budget App
 Handles all PostgreSQL database operations
-"""
-
-import psycopg2
+"            # Create users table
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id SERIAL PRIMARY KEY,
+                    username VARCHAR(255) UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    role VARCHAR(50) DEFAULT 'user',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    is_active BOOLEAN DEFAULT TRUE
+                )
+            """)
+            
+            # Add role column to existing users table if it doesn't exist
+            try:
+                c.execute("ALTER TABLE users ADD COLUMN role VARCHAR(50) DEFAULT 'user'")
+                self.conn.commit()
+            except psycopg2.Error:
+                # Column already exists or other error, rollback and continue
+                self.conn.rollback() psycopg2
 import psycopg2.extras
 import os
 from typing import List, Dict, Optional, Tuple
@@ -86,19 +102,10 @@ class BudgetDb:
                     id SERIAL PRIMARY KEY,
                     username VARCHAR(255) UNIQUE NOT NULL,
                     password_hash TEXT NOT NULL,
-                    role VARCHAR(50) DEFAULT 'user',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     is_active BOOLEAN DEFAULT TRUE
                 )
             """)
-            
-            # Add role column to existing users table if it doesn't exist
-            try:
-                c.execute("ALTER TABLE users ADD COLUMN role VARCHAR(50) DEFAULT 'user'")
-                self.conn.commit()
-            except psycopg2.Error:
-                # Column already exists or other error, rollback and continue
-                self.conn.rollback()
             
             # Create indexes for performance
             c.execute("CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date)")
@@ -127,20 +134,17 @@ class BudgetDb:
                 import bcrypt
                 admin_password = "admin"
                 password_hash = bcrypt.hashpw(admin_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-                
-                # Check if admin user exists
-                c.execute("SELECT COUNT(*) FROM users WHERE username = %s", ("admin",))
-                if c.fetchone()[0] == 0:
-                    # Create admin user with admin role
-                    c.execute("INSERT INTO users (username, password_hash, role) VALUES (%s, %s, %s)", 
-                             ("admin", password_hash, "admin"))
-                    self.conn.commit()
-                    print("Created admin user (username: admin, password: admin)")
-                else:
-                    # Update existing admin user to have admin role
+                c.execute("INSERT INTO users (username, password_hash, role) VALUES (%s, %s, %s)", 
+                         ("admin", password_hash, "admin"))
+                self.conn.commit()
+            except psycopg2.IntegrityError:
+                # Admin user already exists, but let's make sure it has admin role
+                self.conn.rollback()
+                try:
                     c.execute("UPDATE users SET role = %s WHERE username = %s", ("admin", "admin"))
                     self.conn.commit()
-                    
+                except psycopg2.Error:
+                    self.conn.rollback()
             except ImportError:
                 # bcrypt not available, skip admin user creation
                 print("Warning: bcrypt not available, skipping admin user creation")
@@ -518,7 +522,7 @@ class BudgetDb:
             return False
 
     def create_user(self, username: str, password: str, role: str = 'user') -> bool:
-        """Create a new user with encrypted password"""
+        """Create a new user with encrypted password and role"""
         try:
             import bcrypt
             password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
@@ -531,6 +535,28 @@ class BudgetDb:
         except (ImportError, psycopg2.Error):
             self.conn.rollback()
             return False
+
+    def get_user(self, username: str) -> Optional[Dict]:
+        """Get user information by username"""
+        try:
+            c = self.conn.cursor()
+            c.execute("""
+                SELECT id, username, role, created_at, is_active 
+                FROM users WHERE username = %s
+            """, (username,))
+            result = c.fetchone()
+            
+            if result:
+                return {
+                    'id': result[0],
+                    'username': result[1],
+                    'role': result[2],
+                    'created_at': result[3],
+                    'is_active': result[4]
+                }
+            return None
+        except psycopg2.Error:
+            return None
 
     def update_user_password(self, username: str, new_password: str) -> bool:
         """Update user password"""
@@ -548,11 +574,11 @@ class BudgetDb:
             return False
 
     def list_users(self) -> List[Dict]:
-        """List all active users"""
+        """List all users with role information"""
         try:
             c = self.conn.cursor()
             c.execute("""
-                SELECT id, username, created_at, is_active, role 
+                SELECT id, username, role, created_at, is_active 
                 FROM users 
                 ORDER BY username
             """)
@@ -561,49 +587,26 @@ class BudgetDb:
                 {
                     'id': row[0],
                     'username': row[1],
-                    'created_at': row[2],
-                    'active': row[3],
-                    'role': row[4] if row[4] else 'user'
+                    'role': row[2],
+                    'created_at': row[3],
+                    'is_active': row[4]
                 }
                 for row in c.fetchall()
             ]
         except psycopg2.Error:
             return []
 
-    def get_user(self, username: str) -> Optional[Dict]:
-        """Get user information"""
-        try:
-            c = self.conn.cursor()
-            c.execute("SELECT username, role, created_at, is_active FROM users WHERE username = %s", (username,))
-            row = c.fetchone()
-            if row:
-                return {
-                    'username': row[0],
-                    'role': row[1] if row[1] else 'user',
-                    'created_at': row[2],
-                    'is_active': row[3]
-                }
-            return None
-        except psycopg2.Error:
-            return None
-
-    def is_admin(self, username: str) -> bool:
-        """Check if user has admin role"""
-        try:
-            c = self.conn.cursor()
-            c.execute("SELECT role FROM users WHERE username = %s", (username,))
-            result = c.fetchone()
-            return result and result[0] == 'admin'
-        except psycopg2.Error:
-            return False
-
-    def update_user_role(self, username: str, new_role: str) -> bool:
+    def update_user_role(self, username: str, role: str) -> bool:
         """Update user role"""
         try:
             c = self.conn.cursor()
-            c.execute("UPDATE users SET role = %s WHERE username = %s", (new_role, username))
+            c.execute("UPDATE users SET role = %s WHERE username = %s", (role, username))
+            
+            if c.rowcount == 0:
+                return False
+            
             self.conn.commit()
-            return c.rowcount > 0
+            return True
         except psycopg2.Error:
             self.conn.rollback()
             return False
@@ -613,19 +616,37 @@ class BudgetDb:
         try:
             c = self.conn.cursor()
             c.execute("UPDATE users SET is_active = NOT is_active WHERE username = %s", (username,))
+            
+            if c.rowcount == 0:
+                return False
+            
             self.conn.commit()
-            return c.rowcount > 0
+            return True
         except psycopg2.Error:
             self.conn.rollback()
             return False
 
     def delete_user(self, username: str) -> bool:
-        """Delete a user"""
+        """Delete a user (only if not admin)"""
         try:
             c = self.conn.cursor()
-            c.execute("DELETE FROM users WHERE username = %s", (username,))
+            c.execute("DELETE FROM users WHERE username = %s AND role != 'admin'", (username,))
+            
+            if c.rowcount == 0:
+                return False
+            
             self.conn.commit()
-            return c.rowcount > 0
+            return True
         except psycopg2.Error:
             self.conn.rollback()
+            return False
+
+    def is_admin(self, username: str) -> bool:
+        """Check if user has admin role"""
+        try:
+            c = self.conn.cursor()
+            c.execute("SELECT role FROM users WHERE username = %s AND is_active = TRUE", (username,))
+            result = c.fetchone()
+            return result and result[0] == 'admin'
+        except psycopg2.Error:
             return False

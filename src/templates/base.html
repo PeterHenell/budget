@@ -308,6 +308,18 @@
                     Reports
                 </a>
             </div>
+            
+            {% if session.get('is_admin') %}
+            <hr style="border-color: rgba(255,255,255,0.2); margin: 1rem 0;">
+            
+            <div class="nav-item">
+                <a href="{{ url_for('manage_users') }}" class="nav-link {{ 'active' if request.endpoint == 'manage_users' }}">
+                    <i class="bi bi-people"></i>
+                    Manage Users
+                    <span class="badge bg-info rounded-pill ms-2">Admin</span>
+                </a>
+            </div>
+            {% endif %}
         </div>
         
         <div class="user-info">
@@ -315,8 +327,14 @@
                 <i class="bi bi-person-circle"></i>
             </div>
             <div class="user-details">
-                <div class="user-name">{{ current_user or 'User' }}</div>
-                <div class="user-role">Budget Manager</div>
+                <div class="user-name">{{ session.username or 'User' }}</div>
+                <div class="user-role">
+                    {% if session.is_admin %}
+                        <span class="badge bg-success">Admin</span>
+                    {% else %}
+                        Budget Manager
+                    {% endif %}
+                </div>
             </div>
         </div>
         
