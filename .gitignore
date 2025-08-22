@@ -54,6 +54,10 @@ test_*.db
 # Backup files
 *.bak
 *.backup
+*_old.py
+*_backup.*
+*.orig
+*.save
 
 # Coverage reports
 htmlcov/
