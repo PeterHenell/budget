@@ -210,7 +210,11 @@ class BudgetDb:
         try:
             cat_id = self.get_category_id(category)
             if not cat_id:
-                raise ValueError("Category not found")
+                # Create the category if it doesn't exist
+                self.add_category(category)
+                cat_id = self.get_category_id(category)
+                if not cat_id:
+                    raise ValueError(f"Failed to create category: {category}")
             
             c.execute("""
                 INSERT INTO budgets (category_id, year, amount)
@@ -219,6 +223,7 @@ class BudgetDb:
                 DO UPDATE SET amount = EXCLUDED.amount
             """, (cat_id, year, amount))
             self.conn.commit()
+            return True
         except psycopg2.Error as e:
             self.conn.rollback()
             raise Exception(f"Failed to set budget: {e}")
@@ -335,12 +340,17 @@ class BudgetDb:
         try:
             cat_id = self.get_category_id(category_name)
             if not cat_id:
-                raise ValueError(f"Category '{category_name}' not found")
+                # Create the category if it doesn't exist
+                self.add_category(category_name)
+                cat_id = self.get_category_id(category_name)
+                if not cat_id:
+                    raise ValueError(f"Failed to create category: {category_name}")
             
             c.execute("UPDATE transactions SET category_id = %s WHERE id = %s", (cat_id, transaction_id))
             if c.rowcount == 0:
                 raise ValueError(f"Transaction with ID {transaction_id} not found")
             self.conn.commit()
+            return True
         except psycopg2.Error as e:
             self.conn.rollback()
             raise Exception(f"Failed to classify transaction: {e}")

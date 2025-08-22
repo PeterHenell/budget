@@ -267,7 +267,7 @@ def yearly_report(year):
         return jsonify({'error': 'Database connection failed'}), 500
     
     try:
-        report = logic.get_yearly_report(year)
+        report = logic.generate_yearly_report(year)
         return jsonify(report)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -409,6 +409,27 @@ def api_budgets(year):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/set_budget', methods=['POST'])
+@login_required  
+def api_set_budget():
+    """API endpoint to set a single budget"""
+    if not init_logic():
+        return jsonify({'error': 'Database connection failed'}), 500
+    
+    try:
+        data = request.get_json()
+        category = data.get('category')
+        year = data.get('year')
+        amount = data.get('amount')
+        
+        if not category or not year or amount is None:
+            return jsonify({'error': 'Missing required fields: category, year, amount'}), 400
+        
+        success = logic.set_budget(category, int(year), float(amount))
+        return jsonify({'success': success})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/budgets/<int:year>', methods=['POST'])
 @login_required
 def api_set_budgets(year):
@@ -442,12 +463,6 @@ def api_monthly_report(year, month):
     """API endpoint for monthly spending report"""
     return monthly_report(year, month)
 
-@app.route('/api/reports/yearly/<int:year>', methods=['GET'])
-@login_required
-def api_yearly_report(year):
-    """API endpoint for yearly spending report"""
-    return yearly_report(year)
-
 @app.route('/api/classify', methods=['POST'])
 @login_required
 def api_classify():
@@ -463,7 +478,7 @@ def api_classify():
         if not transaction_id or not category:
             return jsonify({'error': 'Missing transaction_id or category'}), 400
         
-        success = logic.categorize_transaction(transaction_id, category)
+        success = logic.reclassify_transaction(transaction_id, category)
         return jsonify({'success': success})
     except Exception as e:
         return jsonify({'error': str(e)}), 500

@@ -280,7 +280,7 @@ class TestAPIEndpoints(BudgetAppIntegrationTest):
     def test_api_yearly_report(self):
         """Test yearly report API"""
         session = self.get_authenticated_session()
-        response = session.get(f"{TestConfig.BASE_URL}/api/reports/yearly/2025")
+        response = session.get(f"{TestConfig.BASE_URL}/api/yearly_report/2025")
         assert response.status_code == 200
         
         data = response.json()
@@ -296,13 +296,13 @@ class TestDataOperations(BudgetAppIntegrationTest):
         
         # Create a test CSV file
         test_data = [
-            ["verifikationsnummer", "date", "description", "amount"],
+            ["Verifikationsnummer", "Datum", "Beskrivning", "Belopp"],
             ["TEST001", "2025-08-22", "Test Transaction 1", "-50.00"],
             ["TEST002", "2025-08-22", "Test Transaction 2", "100.00"],
         ]
         
         with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as f:
-            writer = csv.writer(f)
+            writer = csv.writer(f, delimiter=',')
             writer.writerows(test_data)
             temp_file = f.name
         
@@ -400,12 +400,12 @@ class TestDatabaseIntegration(BudgetAppIntegrationTest):
         
         # Import a transaction via CSV
         test_data = [
-            ["verifikationsnummer", "date", "description", "amount"],
+            ["Verifikationsnummer", "Datum", "Beskrivning", "Belopp"],
             ["PERSIST001", "2025-08-22", "Persistence Test", "-25.99"],
         ]
         
         with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as f:
-            writer = csv.writer(f)
+            writer = csv.writer(f, delimiter=',')
             writer.writerows(test_data)
             temp_file = f.name
         

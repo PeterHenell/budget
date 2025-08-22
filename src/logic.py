@@ -100,18 +100,24 @@ class BudgetLogic:
 
     def import_csv(self, csv_path, csv_encoding='utf-8'):
         """Import transactions from CSV file"""
-        try:
-            # Try to read with specified encoding
-            df = pd.read_csv(csv_path, sep=';', encoding=csv_encoding)
-        except UnicodeDecodeError:
-            # Fallback to latin1 for Swedish files
-            df = pd.read_csv(csv_path, sep=';', encoding='latin-1')
-        except Exception:
-            # Last resort - try comma separator
-            try:
-                df = pd.read_csv(csv_path, encoding=csv_encoding)
-            except UnicodeDecodeError:
-                df = pd.read_csv(csv_path, encoding='latin-1')
+        df = None
+        
+        # Try different separator and encoding combinations
+        for separator in [';', ',']:
+            for encoding in [csv_encoding, 'latin-1']:
+                try:
+                    df_test = pd.read_csv(csv_path, sep=separator, encoding=encoding)
+                    # Check if we got proper columns (more than 1 column suggests correct separator)
+                    if len(df_test.columns) > 1:
+                        df = df_test
+                        break
+                except (UnicodeDecodeError, Exception):
+                    continue
+            if df is not None:
+                break
+        
+        if df is None:
+            raise Exception("Could not read CSV file with any separator/encoding combination")
 
         # Convert to consistent column names
         column_mapping = {
