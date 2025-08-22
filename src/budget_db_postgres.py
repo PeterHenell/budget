@@ -1,0 +1,413 @@
+"""
+Database layer for the Budget App
+Handles all PostgreSQL database operations
+"""
+
+import psycopg2
+import psycopg2.extras
+import os
+from typing import List, Dict, Optional, Tuple
+
+
+class BudgetDb:
+    """Database abstraction layer for PostgreSQL operations"""
+    
+    def __init__(self, connection_params: dict = None):
+        """
+        Initialize database connection
+        connection_params: dict with keys: host, database, user, password, port
+        If None, reads from environment variables
+        """
+        if connection_params is None:
+            connection_params = {
+                'host': os.getenv('POSTGRES_HOST', 'localhost'),
+                'database': os.getenv('POSTGRES_DB', 'budget_db'),
+                'user': os.getenv('POSTGRES_USER', 'budget_user'),
+                'password': os.getenv('POSTGRES_PASSWORD', 'budget_password'),
+                'port': os.getenv('POSTGRES_PORT', '5432')
+            }
+        
+        self.connection_params = connection_params
+        self.conn = None
+        self._connect_db()
+        self._init_db()
+
+    def _connect_db(self):
+        """Connect to PostgreSQL database"""
+        try:
+            self.conn = psycopg2.connect(**self.connection_params)
+            self.conn.autocommit = False  # Use transactions
+            # Set up dict cursor for easier result handling
+            psycopg2.extras.register_default_json(globally=True)
+        except psycopg2.Error as e:
+            raise Exception(f"Failed to connect to PostgreSQL database: {e}")
+
+    def _init_db(self):
+        """Initialize database schema"""
+        try:
+            c = self.conn.cursor()
+            
+            # Create categories table
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS categories (
+                    id SERIAL PRIMARY KEY,
+                    name VARCHAR(255) UNIQUE NOT NULL
+                )
+            """)
+            
+            # Create budgets table
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS budgets (
+                    id SERIAL PRIMARY KEY,
+                    category_id INTEGER REFERENCES categories(id),
+                    year INTEGER NOT NULL,
+                    amount DECIMAL(10,2) NOT NULL,
+                    UNIQUE(category_id, year)
+                )
+            """)
+            
+            # Create transactions table
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS transactions (
+                    id SERIAL PRIMARY KEY,
+                    verifikationsnummer VARCHAR(100),
+                    date DATE NOT NULL,
+                    description TEXT NOT NULL,
+                    amount DECIMAL(10,2) NOT NULL,
+                    category_id INTEGER REFERENCES categories(id),
+                    year INTEGER NOT NULL,
+                    month INTEGER NOT NULL
+                )
+            """)
+            
+            # Create indexes for performance
+            c.execute("CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category_id)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_transactions_year_month ON transactions(year, month)")
+            
+            self.conn.commit()
+            
+            # Insert default categories if not present
+            default_categories = [
+                "Mat", "Boende", "Transport", "Nöje", "Hälsa", "Övrigt", "Uncategorized"
+            ]
+            for cat in default_categories:
+                try:
+                    c.execute("INSERT INTO categories (name) VALUES (%s)", (cat,))
+                except psycopg2.IntegrityError:
+                    # Category already exists, rollback and continue
+                    self.conn.rollback()
+                    continue
+                else:
+                    self.conn.commit()
+                    
+        except psycopg2.Error as e:
+            self.conn.rollback()
+            raise Exception(f"Failed to initialize database schema: {e}")
+
+    def close(self):
+        """Close the database connection"""
+        if self.conn:
+            self.conn.close()
+            self.conn = None
+
+    def __del__(self):
+        """Cleanup on destruction"""
+        self.close()
+
+    # === Category Operations ===
+    
+    def get_categories(self) -> List[str]:
+        """Get all category names"""
+        c = self.conn.cursor()
+        c.execute("SELECT name FROM categories ORDER BY name")
+        return [row[0] for row in c.fetchall()]
+
+    def add_category(self, name: str):
+        """Add a new category"""
+        c = self.conn.cursor()
+        try:
+            c.execute("INSERT INTO categories (name) VALUES (%s)", (name,))
+            self.conn.commit()
+        except psycopg2.IntegrityError:
+            self.conn.rollback()
+            raise ValueError(f"Category '{name}' already exists")
+
+    def remove_category(self, name: str):
+        """Remove a category and cascade operations"""
+        c = self.conn.cursor()
+        try:
+            # First get the category ID
+            c.execute("SELECT id FROM categories WHERE name = %s", (name,))
+            cat_row = c.fetchone()
+            if not cat_row:
+                raise ValueError(f"Category '{name}' not found")
+            cat_id = cat_row[0]
+            
+            # Remove all associated budgets
+            c.execute("DELETE FROM budgets WHERE category_id = %s", (cat_id,))
+            
+            # Remove category assignments from transactions (set to NULL)
+            c.execute("UPDATE transactions SET category_id = NULL WHERE category_id = %s", (cat_id,))
+            
+            # Remove the category itself
+            c.execute("DELETE FROM categories WHERE name = %s", (name,))
+            
+            if c.rowcount == 0:
+                raise ValueError(f"Category '{name}' not found")
+                
+            self.conn.commit()
+        except psycopg2.Error as e:
+            self.conn.rollback()
+            raise Exception(f"Failed to remove category: {e}")
+
+    def get_category_id(self, category_name: str) -> Optional[int]:
+        """Get category ID by name"""
+        c = self.conn.cursor()
+        c.execute("SELECT id FROM categories WHERE name = %s", (category_name,))
+        result = c.fetchone()
+        return result[0] if result else None
+
+    def get_category_name(self, category_id: int) -> Optional[str]:
+        """Get category name by ID"""
+        c = self.conn.cursor()
+        c.execute("SELECT name FROM categories WHERE id = %s", (category_id,))
+        result = c.fetchone()
+        return result[0] if result else None
+
+    # === Budget Operations ===
+    
+    def set_budget(self, category: str, year: int, amount: float):
+        """Set yearly budget for a category"""
+        c = self.conn.cursor()
+        try:
+            cat_id = self.get_category_id(category)
+            if not cat_id:
+                raise ValueError("Category not found")
+            
+            c.execute("""
+                INSERT INTO budgets (category_id, year, amount)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (category_id, year) 
+                DO UPDATE SET amount = EXCLUDED.amount
+            """, (cat_id, year, amount))
+            self.conn.commit()
+        except psycopg2.Error as e:
+            self.conn.rollback()
+            raise Exception(f"Failed to set budget: {e}")
+
+    def get_budget(self, category: str, year: int) -> float:
+        """Get yearly budget for a category"""
+        c = self.conn.cursor()
+        cat_id = self.get_category_id(category)
+        if not cat_id:
+            raise ValueError("Category not found")
+        
+        c.execute("SELECT amount FROM budgets WHERE category_id = %s AND year = %s", (cat_id, year))
+        result = c.fetchone()
+        return float(result[0]) if result else 0.0
+
+    def get_yearly_budgets(self, year: int) -> Dict[str, float]:
+        """Get all budgets for a specific year"""
+        c = self.conn.cursor()
+        c.execute("""
+            SELECT c.name, b.amount
+            FROM categories c
+            JOIN budgets b ON c.id = b.category_id
+            WHERE b.year = %s
+        """, (year,))
+        return {row[0]: float(row[1]) for row in c.fetchall()}
+
+    # === Transaction Operations ===
+    
+    def add_transaction(self, date: str, description: str, amount: float, 
+                       category_name: str, verifikationsnummer: str = None):
+        """Add a new transaction"""
+        c = self.conn.cursor()
+        try:
+            # Get category ID, create if it doesn't exist
+            cat_id = self.get_category_id(category_name)
+            if not cat_id:
+                self.add_category(category_name)
+                cat_id = self.get_category_id(category_name)
+            
+            # Parse date for year/month
+            year = int(date.split('-')[0])
+            month = int(date.split('-')[1])
+            
+            c.execute("""
+                INSERT INTO transactions (verifikationsnummer, date, description, amount, category_id, year, month)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """, (verifikationsnummer, date, description, amount, cat_id, year, month))
+            self.conn.commit()
+        except psycopg2.Error as e:
+            self.conn.rollback()
+            raise Exception(f"Failed to add transaction: {e}")
+
+    def get_transactions(self, category: str = None, year: int = None, 
+                        limit: int = None, offset: int = None) -> List[Dict]:
+        """Get transactions with optional filtering"""
+        c = self.conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        query = """
+            SELECT t.id, t.verifikationsnummer, t.date, t.description, t.amount, 
+                   c.name as category, t.year, t.month
+            FROM transactions t
+            LEFT JOIN categories c ON t.category_id = c.id
+        """
+        params = []
+        
+        conditions = []
+        if category:
+            conditions.append("c.name = %s")
+            params.append(category)
+        if year:
+            conditions.append("t.year = %s")
+            params.append(year)
+        
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+        
+        query += " ORDER BY t.date DESC, t.id DESC"
+        
+        if limit:
+            query += " LIMIT %s"
+            params.append(limit)
+            if offset:
+                query += " OFFSET %s"
+                params.append(offset)
+        
+        c.execute(query, params)
+        return [dict(row) for row in c.fetchall()]
+
+    def get_uncategorized_transactions(self, limit: int = None, offset: int = 0) -> List[Tuple]:
+        """Get all uncategorized transactions with optional pagination"""
+        c = self.conn.cursor()
+        query = """
+            SELECT t.id, t.verifikationsnummer, t.date, t.description, t.amount, t.year, t.month
+            FROM transactions t
+            LEFT JOIN categories c ON t.category_id = c.id
+            WHERE c.name = 'Uncategorized' OR t.category_id IS NULL
+            ORDER BY t.date DESC
+        """
+        params = []
+        
+        if limit:
+            query += " LIMIT %s"
+            params.append(limit)
+            if offset:
+                query += " OFFSET %s"
+                params.append(offset)
+        
+        c.execute(query, params)
+        return c.fetchall()
+
+    def classify_transaction(self, transaction_id: int, category_name: str):
+        """Classify a transaction to a specific category"""
+        c = self.conn.cursor()
+        try:
+            cat_id = self.get_category_id(category_name)
+            if not cat_id:
+                raise ValueError(f"Category '{category_name}' not found")
+            
+            c.execute("UPDATE transactions SET category_id = %s WHERE id = %s", (cat_id, transaction_id))
+            if c.rowcount == 0:
+                raise ValueError(f"Transaction with ID {transaction_id} not found")
+            self.conn.commit()
+        except psycopg2.Error as e:
+            self.conn.rollback()
+            raise Exception(f"Failed to classify transaction: {e}")
+
+    def import_transactions_bulk(self, transactions_data, category_name: str = "Uncategorized"):
+        """Bulk import transactions"""
+        c = self.conn.cursor()
+        try:
+            # Ensure Uncategorized category exists
+            cat_id = self.get_category_id(category_name)
+            if not cat_id:
+                self.add_category(category_name)
+                cat_id = self.get_category_id(category_name)
+            
+            for _, row in transactions_data.iterrows():
+                c.execute("""
+                    INSERT INTO transactions (verifikationsnummer, date, description, amount, category_id, year, month)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    row.get('Verifikationsnummer'),
+                    row['Datum'],
+                    row['Beskrivning'],
+                    row['Belopp'],
+                    cat_id,
+                    row['year'],
+                    row['month']
+                ))
+            
+            self.conn.commit()
+        except psycopg2.Error as e:
+            self.conn.rollback()
+            raise Exception(f"Failed to import transactions: {e}")
+
+    # === Reporting Operations ===
+    
+    def get_spending_report(self, year: int, month: int) -> List[Dict]:
+        """Get spending vs yearly budget report for a specific month"""
+        c = self.conn.cursor()
+        c.execute("""
+            SELECT cat.name, COALESCE(SUM(t.amount), 0) as spent, COALESCE(b.amount, 0) as budget
+            FROM categories cat
+            LEFT JOIN transactions t ON t.category_id = cat.id AND t.year = %s AND t.month = %s
+            LEFT JOIN budgets b ON b.category_id = cat.id AND b.year = %s
+            GROUP BY cat.name, b.amount
+            ORDER BY cat.name
+        """, (year, month, year))
+        
+        return [
+            {
+                'category': row[0],
+                'spent': float(row[1]),
+                'budget': float(row[2]),  # Yearly budget
+                'diff': float(row[2]) - float(row[1])  # Budget minus spending for this month
+            }
+            for row in c.fetchall()
+        ]
+
+    def get_yearly_spending_report(self, year: int) -> List[Dict]:
+        """Get spending vs yearly budget report for entire year"""
+        c = self.conn.cursor()
+        c.execute("""
+            SELECT cat.name, COALESCE(SUM(t.amount), 0) as spent, COALESCE(b.amount, 0) as budget
+            FROM categories cat
+            LEFT JOIN transactions t ON t.category_id = cat.id AND t.year = %s
+            LEFT JOIN budgets b ON b.category_id = cat.id AND b.year = %s
+            GROUP BY cat.name, b.amount
+            ORDER BY cat.name
+        """, (year, year))
+        
+        return [
+            {
+                'category': row[0],
+                'spent': float(row[1]),
+                'budget': float(row[2]),
+                'diff': float(row[2]) - float(row[1])
+            }
+            for row in c.fetchall()
+        ]
+
+    def get_all_budgets(self) -> List[Dict]:
+        """Get all budget data"""
+        c = self.conn.cursor()
+        c.execute("""
+            SELECT c.name as category, b.year, b.amount
+            FROM budgets b
+            JOIN categories c ON b.category_id = c.id
+            ORDER BY b.year DESC, c.name
+        """)
+        
+        return [
+            {
+                'category': row[0],
+                'year': row[1],
+                'amount': float(row[2])
+            }
+            for row in c.fetchall()
+        ]

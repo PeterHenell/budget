@@ -1,0 +1,26 @@
+services:
+  postgres-test:
+    image: postgres:15-alpine
+    container_name: budget_postgres_test
+    environment:
+      POSTGRES_DB: budget_test_db
+      POSTGRES_USER: budget_user
+      POSTGRES_PASSWORD: budget_password_test
+    ports:
+      - "5433:5432"  # Use different port to avoid conflicts
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+    networks:
+      - budget_test_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U budget_user -d budget_test_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  postgres_test_data:
+
+networks:
+  budget_test_network:
+    driver: bridge

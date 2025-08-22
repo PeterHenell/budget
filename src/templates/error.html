@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block title %}Database Error{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="alert alert-danger" role="alert">
+                <h4 class="alert-heading">Database Connection Error</h4>
+                <p>{{ message }}</p>
+                <hr>
+                <p class="mb-0">Please check your database configuration and try again.</p>
+            </div>
+            
+            <div class="card">
+                <div class="card-header">
+                    <h5>Configuration Help</h5>
+                </div>
+                <div class="card-body">
+                    <p>The application expects the following environment variables:</p>
+                    <ul>
+                        <li><code>POSTGRES_HOST</code> - Database server host (default: localhost)</li>
+                        <li><code>POSTGRES_DB</code> - Database name (default: budget_db)</li>
+                        <li><code>POSTGRES_USER</code> - Database user (default: budget_user)</li>
+                        <li><code>POSTGRES_PASSWORD</code> - Database password (default: budget_password)</li>
+                        <li><code>POSTGRES_PORT</code> - Database port (default: 5432)</li>
+                    </ul>
+                    
+                    <p class="mt-3">
+                        <strong>Docker users:</strong> Make sure your PostgreSQL container is running and accessible.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

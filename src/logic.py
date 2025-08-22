@@ -1,11 +1,12 @@
 import pandas as pd
-from budget_db import BudgetDb
+from budget_db_postgres import BudgetDb
 
 class BudgetLogic:
     """Business logic layer for the Budget App"""
     
-    def __init__(self, db_path, password):
-        self.db = BudgetDb(db_path, password)
+    def __init__(self, connection_params=None):
+        """Initialize with database connection parameters or use environment variables"""
+        self.db = BudgetDb(connection_params)
         
     def close(self):
         """Close the database connection"""

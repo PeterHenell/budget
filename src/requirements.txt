@@ -1,9 +1,11 @@
 # Budget App Requirements
 # Web UI: Flask for modern web interface
-# Database: SQLite (built-in) + cryptography for encryption
+# Database: PostgreSQL + psycopg2 for connection
 # Data processing: pandas for CSV import/export
 # Testing: pytest for unit tests
+# Environment: python-dotenv for configuration
 Flask
-cryptography
 pandas
 pytest
+psycopg2-binary
+python-dotenv

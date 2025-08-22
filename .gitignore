@@ -3,6 +3,13 @@
 *.sqlite
 *.sqlite3
 
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
 # Python cache files
 __pycache__/
 *.py[cod]
@@ -48,13 +55,6 @@ test_*.db
 *.bak
 *.backup
 
-# Environment variables
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-
 # Coverage reports
 htmlcov/
 .coverage
@@ -83,3 +83,9 @@ wheels/
 *.egg
 
 src/__pycache__/*
+
+# Docker volumes and data
+postgres_data/
+
+# Docker build context
+.dockerignore

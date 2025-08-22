@@ -12,6 +12,68 @@ import pandas as pd
 from werkzeug.utils import secure_filename
 import json
 from datetime import datetime
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+app = Flask(__name__)
+app.secret_key = os.getenv('FLASK_SECRET_KEY', 'your-secret-key-change-this-in-production')
+
+# Global logic instance
+logic = None
+
+# Configure upload folder
+UPLOAD_FOLDER = 'uploads'
+ALLOWED_EXTENSIONS = {'csv'}
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+# Ensure upload directory exists
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+def allowed_file(filename):
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def init_logic():
+    """Initialize database connection"""
+    global logic
+    if not logic:
+        try:
+            logic = BudgetLogic()  # Uses environment variables for connection
+            return True
+        except Exception as e:
+            print(f"Failed to initialize database: {e}")
+            return False
+    return True
+
+@app.route('/')
+def index():
+    if not init_logic():
+        flash('Database connection failed', 'error')
+        return render_template('error.html', message='Unable to connect to database')
+    return render_template('dashboard.html')
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    # PostgreSQL doesn't need login - just verify connection
+    if init_logic():
+        session['logged_in'] = True
+        flash('Successfully connected to database!', 'success')
+        return redirect(url_for('index'))
+    else:
+        flash('Unable to connect to database', 'error')
+        return render_template('error.html', message='Database connection failed')
+
+from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, session
+import os
+import tempfile
+from logic import BudgetLogic
+from auto_classify import AutoClassificationEngine
+import pandas as pd
+from werkzeug.utils import secure_filename
+import json
+from datetime import datetime
 
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-change-this-in-production'  # Change this in production
