@@ -172,6 +172,40 @@
             margin-bottom: 1rem;
         }
         
+        .user-info {
+            position: absolute;
+            bottom: 5rem;
+            left: 1.5rem;
+            right: 1.5rem;
+            display: flex;
+            align-items: center;
+            padding: 1rem;
+            background: rgba(255,255,255,0.1);
+            border-radius: 12px;
+            margin-bottom: 1rem;
+        }
+        
+        .user-avatar {
+            font-size: 2rem;
+            color: #3498db;
+            margin-right: 1rem;
+        }
+        
+        .user-details {
+            flex: 1;
+        }
+        
+        .user-name {
+            font-weight: 600;
+            color: white;
+            font-size: 0.9rem;
+        }
+        
+        .user-role {
+            font-size: 0.75rem;
+            color: #bdc3c7;
+        }
+        
         .logout-link {
             position: absolute;
             bottom: 1rem;
@@ -273,6 +307,16 @@
                     <i class="bi bi-graph-up"></i>
                     Reports
                 </a>
+            </div>
+        </div>
+        
+        <div class="user-info">
+            <div class="user-avatar">
+                <i class="bi bi-person-circle"></i>
+            </div>
+            <div class="user-details">
+                <div class="user-name">{{ current_user or 'User' }}</div>
+                <div class="user-role">Budget Manager</div>
             </div>
         </div>
         

@@ -1,6 +1,6 @@
 """
 Web-based Budget App using Flask
-Modern web UI with left-side navigation menu
+Modern web UI with left-side navigation menu and user authentication
 """
 
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, session
@@ -13,6 +13,7 @@ from werkzeug.utils import secure_filename
 import json
 from datetime import datetime
 from dotenv import load_dotenv
+from functools import wraps
 
 # Load environment variables
 load_dotenv()
@@ -35,6 +36,15 @@ def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+def login_required(f):
+    """Decorator to require login for routes"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session.get('logged_in') or not session.get('username'):
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
 def init_logic():
     """Initialize database connection"""
     global logic
@@ -47,393 +57,261 @@ def init_logic():
             return False
     return True
 
-@app.route('/')
-def index():
-    if not init_logic():
-        flash('Database connection failed', 'error')
-        return render_template('error.html', message='Unable to connect to database')
-    return render_template('dashboard.html')
-
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    # PostgreSQL doesn't need login - just verify connection
-    if init_logic():
-        session['logged_in'] = True
-        flash('Successfully connected to database!', 'success')
-        return redirect(url_for('index'))
-    else:
-        flash('Unable to connect to database', 'error')
-        return render_template('error.html', message='Database connection failed')
-
-from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, session
-import os
-import tempfile
-from logic import BudgetLogic
-from auto_classify import AutoClassificationEngine
-import pandas as pd
-from werkzeug.utils import secure_filename
-import json
-from datetime import datetime
-
-app = Flask(__name__)
-app.secret_key = 'your-secret-key-change-this-in-production'  # Change this in production
-
-# Global logic instance (will be initialized after password entry)
-logic = None
-
-# Configure upload folder
-UPLOAD_FOLDER = 'uploads'
-ALLOWED_EXTENSIONS = {'csv'}
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-
-# Ensure upload directory exists
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-
-def allowed_file(filename):
-    return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
-@app.route('/')
-def index():
-    if not logic:
-        return redirect(url_for('login'))
-    return render_template('dashboard.html')
-
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
+        username = request.form.get('username')
         password = request.form.get('password')
-        db_path = request.form.get('db_path', 'budget.db')
         
-        try:
-            global logic
-            logic = BudgetLogic(db_path, password)
+        if not username or not password:
+            flash('Please enter both username and password', 'error')
+            return render_template('login.html')
+        
+        # Initialize database connection to check credentials
+        if not init_logic():
+            flash('Database connection failed', 'error')
+            return render_template('login.html')
+        
+        # Authenticate user
+        if logic.db.authenticate_user(username, password):
             session['logged_in'] = True
-            flash('Successfully logged in!', 'success')
+            session['username'] = username
+            flash(f'Welcome back, {username}!', 'success')
             return redirect(url_for('index'))
-        except Exception as e:
-            flash(f'Login failed: {str(e)}', 'error')
+        else:
+            flash('Invalid username or password', 'error')
+            return render_template('login.html')
     
+    # GET request - show login form
     return render_template('login.html')
 
 @app.route('/logout')
 def logout():
-    global logic
-    if logic:
-        logic.close()
-        logic = None
     session.clear()
-    flash('Logged out successfully', 'info')
+    flash('You have been logged out successfully', 'info')
     return redirect(url_for('login'))
 
-@app.route('/budgets')
-def budgets():
-    if not logic:
-        return redirect(url_for('login'))
-    return render_template('budgets.html')
-
-@app.route('/api/budgets/<int:year>')
-def get_budgets(year):
-    if not logic:
-        return jsonify({'error': 'Not logged in'}), 401
+@app.route('/')
+@login_required
+def index():
+    """Main dashboard page"""
+    if not init_logic():
+        flash('Database connection failed', 'error')
+        return render_template('error.html', message='Database connection failed')
     
     try:
-        budgets = logic.get_yearly_budgets(year)
+        # Get summary data for dashboard
         categories = logic.get_categories()
+        transactions_count = len(logic.get_transactions())
         
-        budget_data = []
-        for category in categories:
-            budget_amount = budgets.get(category, 0.0)
-            budget_data.append({
-                'category': category,
-                'yearly_budget': budget_amount
-            })
+        # Get recent transactions (last 10)
+        recent_transactions = logic.get_transactions()[-10:] if logic.get_transactions() else []
         
-        return jsonify({'budgets': budget_data})
+        return render_template('dashboard.html', 
+                             categories=categories,
+                             transactions_count=transactions_count,
+                             recent_transactions=recent_transactions,
+                             current_user=session.get('username'))
+    except Exception as e:
+        flash(f'Error loading dashboard: {e}', 'error')
+        return render_template('error.html', message=str(e))
+
+@app.route('/transactions')
+@login_required
+def transactions():
+    """Display all transactions"""
+    if not init_logic():
+        flash('Database connection failed', 'error')
+        return render_template('error.html', message='Database connection failed')
+    
+    try:
+        all_transactions = logic.get_transactions()
+        categories = logic.get_categories()
+        return render_template('transactions.html', 
+                             transactions=all_transactions, 
+                             categories=categories,
+                             current_user=session.get('username'))
+    except Exception as e:
+        flash(f'Error loading transactions: {e}', 'error')
+        return render_template('error.html', message=str(e))
+
+@app.route('/budgets')
+@login_required
+def budgets():
+    """Display budget management page"""
+    if not init_logic():
+        flash('Database connection failed', 'error')
+        return render_template('error.html', message='Database connection failed')
+    
+    try:
+        categories = logic.get_categories()
+        budget_data = logic.get_budgets()  # Get all budget data
+        return render_template('budgets.html', 
+                             categories=categories,
+                             budgets=budget_data,
+                             current_user=session.get('username'))
+    except Exception as e:
+        flash(f'Error loading budgets: {e}', 'error')
+        return render_template('error.html', message=str(e))
+
+@app.route('/reports')
+@login_required
+def reports():
+    """Display reports page"""
+    if not init_logic():
+        flash('Database connection failed', 'error')
+        return render_template('error.html', message='Database connection failed')
+    
+    try:
+        categories = logic.get_categories()
+        return render_template('reports.html', 
+                             categories=categories,
+                             current_user=session.get('username'))
+    except Exception as e:
+        flash(f'Error loading reports: {e}', 'error')
+        return render_template('error.html', message=str(e))
+
+@app.route('/import_csv')
+@login_required
+def import_csv():
+    """Display CSV import page"""
+    return render_template('import.html', current_user=session.get('username'))
+
+@app.route('/uncategorized')
+@login_required
+def uncategorized():
+    """Display uncategorized transactions"""
+    if not init_logic():
+        flash('Database connection failed', 'error')
+        return render_template('error.html', message='Database connection failed')
+    
+    try:
+        uncategorized_transactions = logic.get_uncategorized_transactions()
+        categories = logic.get_categories()
+        return render_template('uncategorized.html', 
+                             transactions=uncategorized_transactions,
+                             categories=categories,
+                             current_user=session.get('username'))
+    except Exception as e:
+        flash(f'Error loading uncategorized transactions: {e}', 'error')
+        return render_template('error.html', message=str(e))
+
+# API endpoints (all require login)
+@app.route('/api/categorize_transaction', methods=['POST'])
+@login_required
+def categorize_transaction():
+    """API endpoint to categorize a transaction"""
+    if not init_logic():
+        return jsonify({'error': 'Database connection failed'}), 500
+    
+    try:
+        data = request.get_json()
+        transaction_id = data.get('transaction_id')
+        category_name = data.get('category')
+        
+        if not transaction_id or not category_name:
+            return jsonify({'error': 'Missing transaction_id or category'}), 400
+        
+        success = logic.categorize_transaction(transaction_id, category_name)
+        if success:
+            return jsonify({'success': True})
+        else:
+            return jsonify({'error': 'Failed to categorize transaction'}), 500
+            
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/budgets/<int:year>', methods=['POST'])
-def update_budget(year):
-    if not logic:
-        return jsonify({'error': 'Not logged in'}), 401
+@app.route('/api/set_budget', methods=['POST'])
+@login_required
+def set_budget():
+    """API endpoint to set budget for category and year"""
+    if not init_logic():
+        return jsonify({'error': 'Database connection failed'}), 500
     
     try:
         data = request.get_json()
         category = data.get('category')
-        amount = float(data.get('amount', 0))
+        year = data.get('year')
+        amount = data.get('amount')
         
-        logic.set_yearly_budget(category, year, amount)
-        return jsonify({'success': True})
+        if not category or not year or amount is None:
+            return jsonify({'error': 'Missing required fields'}), 400
+        
+        success = logic.set_budget(category, year, float(amount))
+        if success:
+            return jsonify({'success': True})
+        else:
+            return jsonify({'error': 'Failed to set budget'}), 500
+            
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/categories', methods=['POST'])
-def add_category():
-    if not logic:
-        return jsonify({'error': 'Not logged in'}), 401
+@app.route('/api/monthly_report/<int:year>/<int:month>')
+@login_required
+def monthly_report(year, month):
+    """API endpoint for monthly spending report"""
+    if not init_logic():
+        return jsonify({'error': 'Database connection failed'}), 500
     
     try:
-        data = request.get_json()
-        category_name = data.get('name', '').strip()
-        
-        if not category_name:
-            return jsonify({'error': 'Category name required'}), 400
-        
-        logic.add_category(category_name)
-        return jsonify({'success': True})
+        report = logic.get_spending_report(year, month)
+        return jsonify(report)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/categories/<category_name>', methods=['DELETE'])
-def delete_category(category_name):
-    if not logic:
-        return jsonify({'error': 'Not logged in'}), 401
+@app.route('/api/yearly_report/<int:year>')
+@login_required
+def yearly_report(year):
+    """API endpoint for yearly spending report"""
+    if not init_logic():
+        return jsonify({'error': 'Database connection failed'}), 500
     
     try:
-        logic.remove_category(category_name)
-        return jsonify({'success': True})
+        report = logic.get_yearly_report(year)
+        return jsonify(report)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/import')
-def import_csv():
-    if not logic:
-        return redirect(url_for('login'))
-    return render_template('import.html')
-
-@app.route('/api/import', methods=['POST'])
+@app.route('/upload', methods=['POST'])
+@login_required
 def upload_file():
-    if not logic:
-        return jsonify({'error': 'Not logged in'}), 401
+    """Handle CSV file upload and import"""
+    if not init_logic():
+        flash('Database connection failed', 'error')
+        return redirect(url_for('import_csv'))
     
     if 'file' not in request.files:
-        return jsonify({'error': 'No file provided'}), 400
+        flash('No file selected', 'error')
+        return redirect(url_for('import_csv'))
     
     file = request.files['file']
     if file.filename == '':
-        return jsonify({'error': 'No file selected'}), 400
+        flash('No file selected', 'error')
+        return redirect(url_for('import_csv'))
     
     if file and allowed_file(file.filename):
-        filename = secure_filename(file.filename)
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(filepath)
-        
         try:
-            count = logic.import_csv(filepath)
+            filename = secure_filename(file.filename)
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            file.save(filepath)
+            
+            # Import the CSV file
+            imported_count = logic.import_csv(filepath)
+            
             # Clean up uploaded file
             os.remove(filepath)
-            return jsonify({
-                'success': True, 
-                'message': f'Imported {count} transactions',
-                'count': count
-            })
-        except Exception as e:
-            # Clean up uploaded file on error
-            if os.path.exists(filepath):
-                os.remove(filepath)
-            return jsonify({'error': str(e)}), 500
-    
-    return jsonify({'error': 'Invalid file type'}), 400
-
-@app.route('/transactions')
-def transactions():
-    if not logic:
-        return redirect(url_for('login'))
-    return render_template('transactions.html')
-
-@app.route('/api/transactions')
-def get_transactions():
-    if not logic:
-        return jsonify({'error': 'Not logged in'}), 401
-    
-    try:
-        page = int(request.args.get('page', 1))
-        per_page = int(request.args.get('per_page', 50))
-        category_filter = request.args.get('category')
-        
-        transactions = logic.get_transactions(category=category_filter)
-        
-        # Simple pagination
-        start = (page - 1) * per_page
-        end = start + per_page
-        paginated_transactions = transactions[start:end]
-        
-        # Format transactions for JSON
-        formatted_transactions = []
-        for tx in paginated_transactions:
-            tx_id, verif_num, date, description, amount, category, year, month = tx
-            formatted_transactions.append({
-                'id': tx_id,
-                'verifikationsnummer': verif_num,
-                'date': date,
-                'description': description,
-                'amount': amount,
-                'category': category,
-                'year': year,
-                'month': month
-            })
-        
-        return jsonify({
-            'transactions': formatted_transactions,
-            'total': len(transactions),
-            'page': page,
-            'per_page': per_page,
-            'has_more': end < len(transactions)
-        })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/uncategorized')
-def uncategorized():
-    if not logic:
-        return redirect(url_for('login'))
-    return render_template('uncategorized.html')
-
-@app.route('/api/uncategorized')
-def get_uncategorized():
-    if not logic:
-        return jsonify({'error': 'Not logged in'}), 401
-    
-    try:
-        page = int(request.args.get('page', 1))
-        per_page = int(request.args.get('per_page', 50))
-        
-        transactions = logic.get_uncategorized_transactions()
-        
-        # Simple pagination
-        start = (page - 1) * per_page
-        end = start + per_page
-        paginated_transactions = transactions[start:end]
-        
-        # Format transactions for JSON
-        formatted_transactions = []
-        for tx in paginated_transactions:
-            tx_id, verif_num, date, description, amount, year, month = tx
-            formatted_transactions.append({
-                'id': tx_id,
-                'verifikationsnummer': verif_num,
-                'date': date,
-                'description': description,
-                'amount': amount,
-                'year': year,
-                'month': month
-            })
-        
-        return jsonify({
-            'transactions': formatted_transactions,
-            'total': len(transactions),
-            'page': page,
-            'per_page': per_page,
-            'has_more': end < len(transactions),
-            'total_uncategorized': logic.get_uncategorized_count()
-        })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/classify', methods=['POST'])
-def classify_transaction():
-    if not logic:
-        return jsonify({'error': 'Not logged in'}), 401
-    
-    try:
-        data = request.get_json()
-        tx_id = data.get('transaction_id')
-        category = data.get('category')
-        
-        if not tx_id or not category:
-            return jsonify({'error': 'Transaction ID and category required'}), 400
-        
-        logic.reclassify_transaction(tx_id, category)
-        return jsonify({'success': True})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/classify/batch', methods=['POST'])
-def batch_classify():
-    if not logic:
-        return jsonify({'error': 'Not logged in'}), 401
-    
-    try:
-        data = request.get_json()
-        classifications = data.get('classifications', [])
-        
-        success_count = 0
-        for item in classifications:
-            tx_id = item.get('transaction_id')
-            category = item.get('category')
             
-            if tx_id and category:
-                logic.reclassify_transaction(tx_id, category)
-                success_count += 1
-        
-        return jsonify({
-            'success': True, 
-            'classified': success_count,
-            'total': len(classifications)
-        })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/auto-classify', methods=['POST'])
-def auto_classify():
-    if not logic:
-        return jsonify({'error': 'Not logged in'}), 401
-    
-    try:
-        data = request.get_json()
-        confidence_threshold = float(data.get('confidence_threshold', 0.8))
-        
-        engine = AutoClassificationEngine(logic)
-        classified_count, suggestions = engine.auto_classify_uncategorized(confidence_threshold)
-        
-        return jsonify({
-            'success': True,
-            'classified': classified_count,
-            'suggestions': len(suggestions),
-            'remaining': logic.get_uncategorized_count()
-        })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/reports')
-def reports():
-    if not logic:
-        return redirect(url_for('login'))
-    return render_template('reports.html')
-
-@app.route('/api/reports/monthly/<int:year>/<int:month>')
-def monthly_report(year, month):
-    if not logic:
-        return jsonify({'error': 'Not logged in'}), 401
-    
-    try:
-        report_data = logic.generate_monthly_report(year, month)
-        return jsonify({'report': report_data})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/reports/yearly/<int:year>')
-def yearly_report(year):
-    if not logic:
-        return jsonify({'error': 'Not logged in'}), 401
-    
-    try:
-        report_data = logic.generate_yearly_report(year)
-        return jsonify({'report': report_data})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/categories')
-def get_categories():
-    if not logic:
-        return jsonify({'error': 'Not logged in'}), 401
-    
-    try:
-        categories = logic.get_categories()
-        return jsonify({'categories': categories})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+            flash(f'Successfully imported {imported_count} transactions', 'success')
+            return redirect(url_for('transactions'))
+            
+        except Exception as e:
+            flash(f'Error importing file: {e}', 'error')
+            return redirect(url_for('import_csv'))
+    else:
+        flash('Invalid file type. Please upload a CSV file.', 'error')
+        return redirect(url_for('import_csv'))
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    port = int(os.getenv('FLASK_PORT', 5000))
+    debug = os.getenv('FLASK_DEBUG', 'True').lower() == 'true'
+    app.run(host='0.0.0.0', port=port, debug=debug)

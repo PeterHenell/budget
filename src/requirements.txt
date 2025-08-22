@@ -4,8 +4,10 @@
 # Data processing: pandas for CSV import/export
 # Testing: pytest for unit tests
 # Environment: python-dotenv for configuration
+# Security: bcrypt for password hashing
 Flask
 pandas
 pytest
 psycopg2-binary
 python-dotenv
+bcrypt

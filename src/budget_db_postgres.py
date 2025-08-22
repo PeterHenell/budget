@@ -80,10 +80,22 @@ class BudgetDb:
                 )
             """)
             
+            # Create users table for authentication
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id SERIAL PRIMARY KEY,
+                    username VARCHAR(255) UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    is_active BOOLEAN DEFAULT TRUE
+                )
+            """)
+            
             # Create indexes for performance
             c.execute("CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category_id)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_transactions_year_month ON transactions(year, month)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)")
             
             self.conn.commit()
             
@@ -100,6 +112,21 @@ class BudgetDb:
                     continue
                 else:
                     self.conn.commit()
+                    
+            # Create default admin user if not present
+            try:
+                import bcrypt
+                admin_password = "admin"
+                password_hash = bcrypt.hashpw(admin_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+                c.execute("INSERT INTO users (username, password_hash) VALUES (%s, %s)", 
+                         ("admin", password_hash))
+                self.conn.commit()
+            except psycopg2.IntegrityError:
+                # Admin user already exists
+                self.conn.rollback()
+            except ImportError:
+                # bcrypt not available, skip admin user creation
+                print("Warning: bcrypt not available, skipping admin user creation")
                     
         except psycopg2.Error as e:
             self.conn.rollback()
@@ -411,3 +438,97 @@ class BudgetDb:
             }
             for row in c.fetchall()
         ]
+
+    # User management methods
+    def authenticate_user(self, username: str, password: str) -> bool:
+        """Authenticate a user with username and password"""
+        try:
+            import bcrypt
+            c = self.conn.cursor()
+            c.execute("SELECT password_hash FROM users WHERE username = %s AND is_active = TRUE", 
+                     (username,))
+            result = c.fetchone()
+            
+            if result:
+                stored_hash = result[0]
+                return bcrypt.checkpw(password.encode('utf-8'), stored_hash.encode('utf-8'))
+            return False
+        except ImportError:
+            # bcrypt not available
+            return False
+        except psycopg2.Error as e:
+            self.conn.rollback()
+            return False
+
+    def create_user(self, username: str, password: str) -> bool:
+        """Create a new user with encrypted password"""
+        try:
+            import bcrypt
+            password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+            
+            c = self.conn.cursor()
+            c.execute("INSERT INTO users (username, password_hash) VALUES (%s, %s)", 
+                     (username, password_hash))
+            self.conn.commit()
+            return True
+        except (ImportError, psycopg2.Error):
+            self.conn.rollback()
+            return False
+
+    def get_user(self, username: str) -> Optional[Dict]:
+        """Get user information by username"""
+        try:
+            c = self.conn.cursor()
+            c.execute("""
+                SELECT id, username, created_at, is_active 
+                FROM users WHERE username = %s
+            """, (username,))
+            result = c.fetchone()
+            
+            if result:
+                return {
+                    'id': result[0],
+                    'username': result[1],
+                    'created_at': result[2],
+                    'is_active': result[3]
+                }
+            return None
+        except psycopg2.Error:
+            return None
+
+    def update_user_password(self, username: str, new_password: str) -> bool:
+        """Update user password"""
+        try:
+            import bcrypt
+            password_hash = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+            
+            c = self.conn.cursor()
+            c.execute("UPDATE users SET password_hash = %s WHERE username = %s", 
+                     (password_hash, username))
+            self.conn.commit()
+            return c.rowcount > 0
+        except (ImportError, psycopg2.Error):
+            self.conn.rollback()
+            return False
+
+    def list_users(self) -> List[Dict]:
+        """List all active users"""
+        try:
+            c = self.conn.cursor()
+            c.execute("""
+                SELECT id, username, created_at, is_active 
+                FROM users 
+                ORDER BY username
+            """)
+            
+            return [
+                {
+                    'id': row[0],
+                    'username': row[1],
+                    'created_at': row[2],
+                    'is_active': row[3]
+                }
+                for row in c.fetchall()
+            ]
+        except psycopg2.Error:
+            return []
