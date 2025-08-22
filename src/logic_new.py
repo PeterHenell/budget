@@ -11,11 +11,6 @@ class BudgetLogic:
         """Close the database connection"""
         self.db.close()
 
-    @property
-    def conn(self):
-        """Compatibility property for tests - provides access to database connection"""
-        return self.db.conn
-
     # === Category Management ===
     
     def get_categories(self):
@@ -62,38 +57,13 @@ class BudgetLogic:
         """Get transactions with optional filtering"""
         return self.db.get_transactions(category, year, limit, offset)
 
-    def get_uncategorized_transactions(self, limit=None, offset=0):
-        """Get all uncategorized transactions with optional pagination"""
-        return self.db.get_uncategorized_transactions(limit, offset)
+    def get_uncategorized_transactions(self):
+        """Get all uncategorized transactions"""
+        return self.db.get_uncategorized_transactions()
 
-    def get_uncategorized_count(self):
-        """Get count of uncategorized transactions"""
-        return len(self.get_uncategorized_transactions())
-
-    def classify_transaction(self, verifikationsnummer, category_name):
-        """Classify a transaction by verification number (for backward compatibility)"""
-        # First find the transaction ID by verification number
-        transactions = self.db.get_transactions()
-        transaction_id = None
-        for txn in transactions:
-            if txn.get('verifikationsnummer') == verifikationsnummer:
-                transaction_id = txn['id']
-                break
-        
-        if transaction_id is None:
-            raise ValueError(f"Transaction with verification number '{verifikationsnummer}' not found")
-        
+    def classify_transaction(self, transaction_id, category_name):
+        """Classify a transaction to a specific category"""
         return self.db.classify_transaction(transaction_id, category_name)
-
-    def reclassify_transaction(self, transaction_id, category_name):
-        """Reclassify a transaction by transaction ID (direct database operation)"""
-        return self.db.classify_transaction(transaction_id, category_name)
-
-    def get_unclassified_transactions(self):
-        """Get transactions that have no category assigned (category_id IS NULL)"""
-        c = self.db.conn.cursor()
-        c.execute("SELECT verifikationsnummer, date, description, amount FROM transactions WHERE category_id IS NULL")
-        return c.fetchall()
 
     # === CSV Import Functionality ===
 
@@ -116,10 +86,8 @@ class BudgetLogic:
         column_mapping = {
             'Datum': 'Datum',
             'Date': 'Datum',
-            'Bokföringsdatum': 'Datum',  # Swedish banking format
             'Beskrivning': 'Beskrivning', 
             'Description': 'Beskrivning',
-            'Text': 'Beskrivning',  # Test format
             'Belopp': 'Belopp',
             'Amount': 'Belopp',
             'Verifikationsnummer': 'Verifikationsnummer',
