@@ -5,9 +5,12 @@
 # Testing: pytest for unit tests
 # Environment: python-dotenv for configuration
 # Security: bcrypt for password hashing
+# HTTP requests: requests for integration testing
 Flask
 pandas
 pytest
+pytest-html
+requests
 psycopg2-binary
 python-dotenv
 bcrypt

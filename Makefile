@@ -3,7 +3,7 @@ REQ_FILE=src/requirements.txt
 SRC_DIR=src
 COMPOSE_FILE=docker-compose.yml
 
-.PHONY: up down web logs test clean import help auto-demo build install-dev dev-test status
+.PHONY: up down web logs test clean import help auto-demo build install-dev dev-test status test-integration test-unit
 
 help:
 	@echo "Budget App - Available commands:"
@@ -17,6 +17,10 @@ help:
 	@echo "  make logs      - Show application logs"
 	@echo "  make build     - Build/rebuild Docker images"
 	@echo "  make import    - Import CSV files using Docker (place files in input/ folder)"
+	@echo ""
+	@echo "Testing Commands:"
+	@echo "  make test-integration - Run full integration tests with separate test database"
+	@echo "  make test-unit        - Run unit tests locally"
 	@echo ""
 	@echo "Development Commands:"
 	@echo "  make install-dev - Install local development environment"
@@ -63,6 +67,17 @@ import:
 	@echo "Make sure your CSV files are in the 'input/' folder"
 	@echo "The container will process files and exit"
 	docker compose run --rm web python import_cli.py
+
+# Testing Commands
+test-integration:
+	@echo "Running comprehensive integration tests..."
+	@echo "This will start separate test containers with isolated test database"
+	./run_integration_tests.sh
+
+test-unit:
+	@echo "Running unit tests..."
+	. $(VENV_DIR)/bin/activate && cd $(SRC_DIR) && python -m pytest test_logic.py -v
+	. $(VENV_DIR)/bin/activate && python -m unittest tests.test_import_cli -v
 
 # Development Commands  
 install-dev: venv

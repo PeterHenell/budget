@@ -68,6 +68,11 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 
+# Test reports and artifacts
+test-report.html
+test_results/
+*.xml
+
 # Distribution / packaging
 .Python
 build/
