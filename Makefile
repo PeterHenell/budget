@@ -1,42 +1,87 @@
 VENV_DIR=venv
 REQ_FILE=src/requirements.txt
 SRC_DIR=src
+COMPOSE_FILE=docker-compose.yml
 
-.PHONY: venv install web test clean import help auto-demo
+.PHONY: up down web logs test clean import help auto-demo build install-dev dev-test status
 
 help:
 	@echo "Budget App - Available commands:"
-	@echo "  make install   - Create virtual environment and install dependencies"
-	@echo "  make web       - Start the web application (default port 5000)"
-	@echo "  make import    - Import CSV files from input/ folder"
-	@echo "  make auto-demo - Demo auto-classification capabilities"
-	@echo "  make test      - Run unit tests"
-	@echo "  make clean     - Remove virtual environment and temporary files"
 	@echo ""
-	@echo "Usage: Start with 'make web' and open http://localhost:5000"
+	@echo "Docker Commands (Recommended):"
+	@echo "  make up        - Start the application with Docker Compose (PostgreSQL + Web)"
+	@echo "  make down      - Stop and remove all containers"
+	@echo "  make status    - Show current container status"
+	@echo "  make web       - Start web app only (requires 'make db' first)"
+	@echo "  make db        - Start PostgreSQL database only"
+	@echo "  make logs      - Show application logs"
+	@echo "  make build     - Build/rebuild Docker images"
+	@echo "  make import    - Import CSV files using Docker (place files in input/ folder)"
+	@echo ""
+	@echo "Development Commands:"
+	@echo "  make install-dev - Install local development environment"
+	@echo "  make dev-test   - Run tests locally (for development)"
+	@echo "  make auto-demo  - Demo auto-classification (requires local setup)"
+	@echo "  make clean      - Clean up containers, volumes, and local files"
+	@echo ""
+	@echo "Usage: Start with 'make up' and open http://localhost:5000"
+
+# Docker Compose Commands
+up:
+	@echo "Starting Budget App with Docker Compose..."
+	@echo "PostgreSQL will be available on localhost:5432"
+	@echo "Web app will be available on http://localhost:5000"
+	docker compose up -d
+	@echo "Containers started. Use 'make logs' to see output."
+
+down:
+	@echo "Stopping Budget App containers..."
+	docker compose down
+
+status:
+	@echo "Current container status:"
+	docker compose ps
+
+web:
+	@echo "Starting web application only..."
+	docker compose up -d web
+
+db:
+	@echo "Starting PostgreSQL database only..."
+	docker compose up -d postgres
+
+logs:
+	@echo "Showing application logs (press Ctrl+C to exit)..."
+	docker compose logs -f
+
+build:
+	@echo "Building Docker images..."
+	docker compose build
+
+import:
+	@echo "Starting CSV import using Docker..."
+	@echo "Make sure your CSV files are in the 'input/' folder"
+	@echo "The container will process files and exit"
+	docker compose run --rm web python import_cli.py
+
+# Development Commands  
+install-dev: venv
+	. $(VENV_DIR)/bin/activate && pip install --upgrade pip && pip install -r $(REQ_FILE)
 
 venv:
 	python3 -m venv $(VENV_DIR)
 
-install: venv
-	. $(VENV_DIR)/bin/activate && pip install --upgrade pip && pip install -r $(REQ_FILE)
-
-web:
-	@echo "Starting web application on http://localhost:5000"
-	. $(VENV_DIR)/bin/activate && cd $(SRC_DIR) && python web_app.py
-
-test:
+dev-test:
+	@echo "Running tests locally (requires PostgreSQL running via 'make db')..."
 	. $(VENV_DIR)/bin/activate && cd $(SRC_DIR) && python -m pytest test_logic.py -v
 	. $(VENV_DIR)/bin/activate && python -m unittest tests.test_import_cli -v
 
-import:
-	@echo "Starting CSV import utility..."
-	@echo "Place CSV files in the 'input/' folder before running this command"
-	. $(VENV_DIR)/bin/activate && cd $(SRC_DIR) && python import_cli.py
-
 auto-demo:
-	@echo "Starting auto-classification demo..."
+	@echo "Starting auto-classification demo (local development)..."
 	. $(VENV_DIR)/bin/activate && cd $(SRC_DIR) && python auto_classify_demo.py
 
 clean:
+	@echo "Cleaning up containers, volumes and local files..."
+	docker compose down -v --remove-orphans
+	docker system prune -f
 	rm -rf $(VENV_DIR) *.db $(SRC_DIR)/__pycache__ $(SRC_DIR)/*.pyc $(SRC_DIR)/uploads
