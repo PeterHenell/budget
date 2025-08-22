@@ -92,6 +92,9 @@ class BudgetDb:
                 )
             """)
             
+            # Commit the table creation first
+            self.conn.commit()
+            
             # Add role column to existing users table if it doesn't exist
             try:
                 c.execute("ALTER TABLE users ADD COLUMN role VARCHAR(50) DEFAULT 'user'")

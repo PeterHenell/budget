@@ -574,6 +574,83 @@ class TestDatabaseIntegration(BudgetAppIntegrationTest):
             os.unlink(temp_file)
 
 
+class TestRoleBasedAccessControl(BudgetAppIntegrationTest):
+    """Test role-based access control and admin functionality"""
+    
+    def test_admin_can_access_user_management(self):
+        """Test that admin user can access user management page"""
+        session = self.get_authenticated_session()
+        
+        # Admin should be able to access user management page
+        response = session.get(f"{TestConfig.BASE_URL}/manage_users")
+        assert response.status_code == 200
+        assert "User Management" in response.text
+        assert "manage_users.html" in response.url or "manage" in response.text.lower()
+    
+    def test_admin_can_list_users(self):
+        """Test that admin can see user list"""
+        session = self.get_authenticated_session()
+        
+        # Get user management page
+        response = session.get(f"{TestConfig.BASE_URL}/manage_users")
+        assert response.status_code == 200
+        
+        # Should contain admin user in the list
+        assert "admin" in response.text
+    
+    def test_admin_user_role_apis(self):
+        """Test admin user role management APIs"""
+        session = self.get_authenticated_session()
+        
+        # Test that role change API exists and returns proper error for self-modification
+        response = session.post(
+            f"{TestConfig.BASE_URL}/api/users/admin/role",
+            json={"role": "user"}
+        )
+        
+        # Should prevent admin from removing their own admin role
+        assert response.status_code == 400
+        data = response.json()
+        assert "Cannot remove admin role from yourself" in data.get("error", "")
+    
+    def test_admin_user_toggle_apis(self):
+        """Test admin user status toggle APIs"""
+        session = self.get_authenticated_session()
+        
+        # Test that toggle API exists and returns proper error for self-modification
+        response = session.post(f"{TestConfig.BASE_URL}/api/users/admin/toggle")
+        
+        # Should prevent admin from deactivating themselves
+        assert response.status_code == 400
+        data = response.json()
+        assert "Cannot deactivate your own account" in data.get("error", "")
+    
+    def test_admin_user_delete_apis(self):
+        """Test admin user deletion APIs"""
+        session = self.get_authenticated_session()
+        
+        # Test that delete API exists and returns proper error for self-deletion
+        response = session.delete(f"{TestConfig.BASE_URL}/api/users/admin")
+        
+        # Should prevent admin from deleting themselves
+        assert response.status_code == 400
+        data = response.json()
+        assert "Cannot delete your own account" in data.get("error", "")
+    
+    def test_role_based_navigation(self):
+        """Test that admin sees admin-specific navigation elements"""
+        session = self.get_authenticated_session()
+        
+        # Get dashboard page
+        response = session.get(f"{TestConfig.BASE_URL}/")
+        assert response.status_code == 200
+        
+        # Should contain admin-specific elements (Manage Users link)
+        # This tests that the navigation shows admin-only items
+        page_content = response.text.lower()
+        assert "manage users" in page_content or "admin" in page_content
+
+
 if __name__ == "__main__":
     # Run tests with pytest
     pytest.main([__file__, "-v", "--tb=short"])
