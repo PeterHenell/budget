@@ -373,6 +373,153 @@ class TestDataOperations(BudgetAppIntegrationTest):
             )
             assert response.status_code == 200
 
+    def test_transaction_deletion_single(self):
+        """Test single transaction deletion"""
+        session = self.get_authenticated_session()
+        
+        # First, import a test transaction
+        test_data = [
+            ["Verifikationsnummer", "Datum", "Beskrivning", "Belopp"],
+            ["DELETE_TEST_001", "2025-08-22", "Transaction to delete", "-99.99"],
+        ]
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as f:
+            writer = csv.writer(f, delimiter=',')
+            writer.writerows(test_data)
+            temp_file = f.name
+        
+        try:
+            # Import the transaction
+            with open(temp_file, 'rb') as f:
+                files = {'file': ('delete_test.csv', f, 'text/csv')}
+                upload_response = session.post(f"{TestConfig.BASE_URL}/upload", files=files)
+            
+            assert upload_response.status_code in [200, 302]
+            
+            # Get the imported transaction
+            transactions_response = session.get(f"{TestConfig.BASE_URL}/api/transactions")
+            assert transactions_response.status_code == 200
+            transactions_data = transactions_response.json()
+            
+            # Find our test transaction
+            test_transaction = None
+            for tx in transactions_data["transactions"]:
+                if tx["verifikationsnummer"] == "DELETE_TEST_001":
+                    test_transaction = tx
+                    break
+            
+            assert test_transaction is not None, "Test transaction not found after import"
+            
+            # Delete the transaction
+            delete_response = session.delete(f"{TestConfig.BASE_URL}/api/transactions/{test_transaction['id']}")
+            assert delete_response.status_code == 200
+            
+            delete_data = delete_response.json()
+            assert delete_data["success"] is True
+            
+            # Verify transaction is deleted
+            verify_response = session.get(f"{TestConfig.BASE_URL}/api/transactions")
+            assert verify_response.status_code == 200
+            verify_data = verify_response.json()
+            
+            # Transaction should no longer exist
+            for tx in verify_data["transactions"]:
+                assert tx["verifikationsnummer"] != "DELETE_TEST_001", "Transaction still exists after deletion"
+                
+        finally:
+            os.unlink(temp_file)
+
+    def test_transaction_deletion_bulk(self):
+        """Test bulk transaction deletion"""
+        session = self.get_authenticated_session()
+        
+        # First, import test transactions
+        test_data = [
+            ["Verifikationsnummer", "Datum", "Beskrivning", "Belopp"],
+            ["BULK_DELETE_001", "2025-08-22", "Bulk delete test 1", "-10.00"],
+            ["BULK_DELETE_002", "2025-08-22", "Bulk delete test 2", "-20.00"],
+            ["BULK_DELETE_003", "2025-08-22", "Bulk delete test 3", "-30.00"],
+        ]
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as f:
+            writer = csv.writer(f, delimiter=',')
+            writer.writerows(test_data)
+            temp_file = f.name
+        
+        try:
+            # Import the transactions
+            with open(temp_file, 'rb') as f:
+                files = {'file': ('bulk_delete_test.csv', f, 'text/csv')}
+                upload_response = session.post(f"{TestConfig.BASE_URL}/upload", files=files)
+            
+            assert upload_response.status_code in [200, 302]
+            
+            # Get the imported transactions
+            transactions_response = session.get(f"{TestConfig.BASE_URL}/api/transactions")
+            assert transactions_response.status_code == 200
+            transactions_data = transactions_response.json()
+            
+            # Find our test transactions
+            test_transaction_ids = []
+            for tx in transactions_data["transactions"]:
+                if tx["verifikationsnummer"].startswith("BULK_DELETE_"):
+                    test_transaction_ids.append(tx["id"])
+            
+            assert len(test_transaction_ids) == 3, f"Expected 3 test transactions, found {len(test_transaction_ids)}"
+            
+            # Delete the transactions in bulk
+            bulk_delete_response = session.post(
+                f"{TestConfig.BASE_URL}/api/transactions/delete/bulk",
+                json={"transaction_ids": test_transaction_ids}
+            )
+            assert bulk_delete_response.status_code == 200
+            
+            bulk_delete_data = bulk_delete_response.json()
+            assert bulk_delete_data["success"] is True
+            assert bulk_delete_data["deleted_count"] == 3
+            
+            # Verify transactions are deleted
+            verify_response = session.get(f"{TestConfig.BASE_URL}/api/transactions")
+            assert verify_response.status_code == 200
+            verify_data = verify_response.json()
+            
+            # Transactions should no longer exist
+            for tx in verify_data["transactions"]:
+                assert not tx["verifikationsnummer"].startswith("BULK_DELETE_"), \
+                    f"Transaction {tx['verifikationsnummer']} still exists after bulk deletion"
+                
+        finally:
+            os.unlink(temp_file)
+
+    def test_transaction_deletion_errors(self):
+        """Test transaction deletion error handling"""
+        session = self.get_authenticated_session()
+        
+        # Test deleting non-existent transaction
+        delete_response = session.delete(f"{TestConfig.BASE_URL}/api/transactions/99999")
+        assert delete_response.status_code == 500  # Should return error
+        
+        # Test bulk delete with empty list
+        bulk_delete_response = session.post(
+            f"{TestConfig.BASE_URL}/api/transactions/delete/bulk",
+            json={"transaction_ids": []}
+        )
+        assert bulk_delete_response.status_code == 400
+        
+        bulk_delete_data = bulk_delete_response.json()
+        assert "error" in bulk_delete_data
+        assert "No transaction IDs provided" in bulk_delete_data["error"]
+        
+        # Test bulk delete with invalid data
+        invalid_bulk_response = session.post(
+            f"{TestConfig.BASE_URL}/api/transactions/delete/bulk",
+            json={"transaction_ids": "not_a_list"}
+        )
+        assert invalid_bulk_response.status_code == 400
+        
+        invalid_data = invalid_bulk_response.json()
+        assert "error" in invalid_data
+
 
 class TestDatabaseIntegration(BudgetAppIntegrationTest):
     """Test database integration and data persistence"""

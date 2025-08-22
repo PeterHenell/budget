@@ -384,6 +384,36 @@ class BudgetDb:
             self.conn.rollback()
             raise Exception(f"Failed to import transactions: {e}")
 
+    def delete_transaction(self, transaction_id: int):
+        """Delete a single transaction by ID"""
+        c = self.conn.cursor()
+        try:
+            c.execute("DELETE FROM transactions WHERE id = %s", (transaction_id,))
+            if c.rowcount == 0:
+                raise ValueError(f"Transaction with ID {transaction_id} not found")
+            self.conn.commit()
+            return True
+        except psycopg2.Error as e:
+            self.conn.rollback()
+            raise Exception(f"Failed to delete transaction: {e}")
+
+    def delete_transactions_bulk(self, transaction_ids: List[int]):
+        """Delete multiple transactions by their IDs"""
+        if not transaction_ids:
+            return 0
+        
+        c = self.conn.cursor()
+        try:
+            # Use IN clause for bulk deletion
+            placeholders = ','.join(['%s'] * len(transaction_ids))
+            c.execute(f"DELETE FROM transactions WHERE id IN ({placeholders})", transaction_ids)
+            deleted_count = c.rowcount
+            self.conn.commit()
+            return deleted_count
+        except psycopg2.Error as e:
+            self.conn.rollback()
+            raise Exception(f"Failed to delete transactions: {e}")
+
     # === Reporting Operations ===
     
     def get_spending_report(self, year: int, month: int) -> List[Dict]:

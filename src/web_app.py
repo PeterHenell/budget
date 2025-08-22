@@ -524,6 +524,45 @@ def api_auto_classify():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/transactions/<int:transaction_id>', methods=['DELETE'])
+@login_required
+def api_delete_transaction(transaction_id):
+    """API endpoint to delete a single transaction"""
+    if not init_logic():
+        return jsonify({'error': 'Database connection failed'}), 500
+    
+    try:
+        success = logic.delete_transaction(transaction_id)
+        return jsonify({'success': success, 'message': 'Transaction deleted successfully'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/transactions/delete/bulk', methods=['POST'])
+@login_required
+def api_delete_transactions_bulk():
+    """API endpoint to delete multiple transactions"""
+    if not init_logic():
+        return jsonify({'error': 'Database connection failed'}), 500
+    
+    try:
+        data = request.get_json()
+        transaction_ids = data.get('transaction_ids', [])
+        
+        if not transaction_ids:
+            return jsonify({'error': 'No transaction IDs provided'}), 400
+        
+        if not isinstance(transaction_ids, list):
+            return jsonify({'error': 'transaction_ids must be a list'}), 400
+        
+        deleted_count = logic.delete_transactions_bulk(transaction_ids)
+        return jsonify({
+            'success': True, 
+            'deleted_count': deleted_count,
+            'message': f'Successfully deleted {deleted_count} transaction(s)'
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/import', methods=['POST'])
 @login_required
 def api_import():

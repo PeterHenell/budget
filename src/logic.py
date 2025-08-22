@@ -96,6 +96,16 @@ class BudgetLogic:
         c.execute("SELECT verifikationsnummer, date, description, amount FROM transactions WHERE category_id IS NULL")
         return c.fetchall()
 
+    # === Transaction Delete Functionality ===
+
+    def delete_transaction(self, transaction_id):
+        """Delete a single transaction by ID"""
+        return self.db.delete_transaction(transaction_id)
+
+    def delete_transactions_bulk(self, transaction_ids):
+        """Delete multiple transactions by their IDs"""
+        return self.db.delete_transactions_bulk(transaction_ids)
+
     # === CSV Import Functionality ===
 
     def import_csv(self, csv_path, csv_encoding='utf-8'):
