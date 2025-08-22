@@ -3,7 +3,7 @@ REQ_FILE=src/requirements.txt
 SRC_DIR=src
 COMPOSE_FILE=docker-compose.yml
 
-.PHONY: up down web logs test clean import help auto-demo build install-dev dev-test status test-integration test-unit
+.PHONY: up down web logs test clean import help auto-demo build install-dev dev-test status test-integration test-unit dev up-dev down-dev logs-dev
 
 help:
 	@echo "Budget App - Available commands:"
@@ -26,6 +26,9 @@ help:
 	@echo "  make install-dev - Install local development environment"
 	@echo "  make dev-test   - Run tests locally (for development)"
 	@echo "  make auto-demo  - Demo auto-classification (requires local setup)"
+	@echo "  make up-dev     - Start development environment with hot reloading"
+	@echo "  make down-dev   - Stop development environment"
+	@echo "  make logs-dev   - Show development logs"
 	@echo "  make clean      - Clean up containers, volumes, and local files"
 	@echo ""
 	@echo "Usage: Start with 'make up' and open http://localhost:5000"
@@ -98,5 +101,29 @@ auto-demo:
 clean:
 	@echo "Cleaning up containers, volumes and local files..."
 	docker compose down -v --remove-orphans
+	docker compose -f docker-compose.dev.yml down -v --remove-orphans
 	docker system prune -f
 	rm -rf $(VENV_DIR) *.db $(SRC_DIR)/__pycache__ $(SRC_DIR)/*.pyc $(SRC_DIR)/uploads
+
+# Development Environment Commands (Hot Reloading)
+up-dev:
+	@echo "Starting Budget App in DEVELOPMENT mode with hot reloading..."
+	@echo "Code changes will be reflected immediately without rebuilding."
+	@echo "PostgreSQL will be available on localhost:5432"
+	@echo "Web app will be available on http://localhost:5000"
+	@echo ""
+	@echo "Note: This mounts your source code directly for development."
+	docker compose -f docker-compose.dev.yml up -d --build
+	@echo ""
+	@echo "Development environment started!"
+	@echo "• Files in src/ are mounted and will reload automatically"
+	@echo "• Use 'make logs-dev' to see output"
+	@echo "• Use 'make down-dev' to stop"
+
+down-dev:
+	@echo "Stopping development environment..."
+	docker compose -f docker-compose.dev.yml down
+
+logs-dev:
+	@echo "Showing development environment logs (Ctrl+C to exit)..."
+	docker compose -f docker-compose.dev.yml logs -f

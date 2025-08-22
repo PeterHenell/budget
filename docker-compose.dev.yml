@@ -1,0 +1,57 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: budget_postgres_dev
+    environment:
+      POSTGRES_DB: budget_db
+      POSTGRES_USER: budget_user
+      POSTGRES_PASSWORD: budget_password_2025
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - budget_dev_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U budget_user -d budget_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build: 
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: budget_web_dev
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: budget_db
+      POSTGRES_USER: budget_user
+      POSTGRES_PASSWORD: budget_password_2025
+      POSTGRES_PORT: 5432
+      FLASK_SECRET_KEY: dev-secret-key-budget-app-2025
+      FLASK_ENV: development
+      FLASK_DEBUG: 1
+      PYTHONUNBUFFERED: 1
+    ports:
+      - "5000:5000"
+    volumes:
+      # Mount the entire source directory for hot reloading
+      - ./src:/app:rw
+      - ./uploads:/app/uploads:rw
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - budget_dev_network
+    restart: unless-stopped
+    # Override command to use Flask development server with debug mode
+    command: python -m flask --app web_app run --host=0.0.0.0 --port=5000 --debug
+
+volumes:
+  postgres_dev_data:
+
+networks:
+  budget_dev_network:
+    driver: bridge

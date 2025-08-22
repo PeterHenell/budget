@@ -592,9 +592,38 @@ def api_delete_transactions_bulk():
 @login_required
 def api_import():
     """API endpoint for CSV import"""
-    # This could handle AJAX CSV imports
-    # For now, redirect to the existing upload handler
-    return jsonify({'error': 'Use /upload endpoint for file uploads'}), 501
+    if not init_logic():
+        return jsonify({'error': 'Database connection failed'}), 500
+    
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file provided'}), 400
+    
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No file selected'}), 400
+    
+    if not file or not allowed_file(file.filename):
+        return jsonify({'error': 'Invalid file type. Please upload a CSV file.'}), 400
+    
+    try:
+        filename = secure_filename(file.filename)
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(filepath)
+        
+        # Import the CSV file
+        imported_count = logic.import_csv(filepath)
+        
+        # Clean up uploaded file
+        os.remove(filepath)
+        
+        return jsonify({
+            'success': True,
+            'count': imported_count,
+            'message': f'Successfully imported {imported_count} transactions'
+        })
+        
+    except Exception as e:
+        return jsonify({'error': f'Import failed: {str(e)}'}), 500
 
 @app.route('/manage_users')
 @admin_required
