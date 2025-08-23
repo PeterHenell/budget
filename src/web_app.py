@@ -14,6 +14,11 @@ from werkzeug.utils import secure_filename
 from datetime import datetime
 from dotenv import load_dotenv
 from functools import wraps
+from logging_config import get_logger
+from error_handling import (
+    standardize_flash_message, handle_database_connection, create_error_response,
+    DatabaseError, ValidationError, AuthenticationError, validate_required_fields
+)
 from logging_config import init_logging, get_logger
 
 # Load environment variables
@@ -33,17 +38,21 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 # Store logic instance in app context for thread safety
 def get_logic():
     """Get logic instance from app context (thread-safe)"""
-    if not hasattr(app, 'logic_instance'):
-        # Initialize connection parameters from environment
-        connection_params = {
-            'host': os.getenv('POSTGRES_HOST', 'postgres'),
-            'port': int(os.getenv('POSTGRES_PORT', 5432)),
-            'database': os.getenv('POSTGRES_DB', 'budget_db'),
-            'user': os.getenv('POSTGRES_USER', 'budget_user'),
-            'password': os.getenv('POSTGRES_PASSWORD', 'budget_password_2025')
-        }
-        app.logic_instance = BudgetLogic(connection_params)
-    return app.logic_instance
+    try:
+        if not hasattr(app, 'logic_instance'):
+            # Initialize connection parameters from environment
+            connection_params = {
+                'host': os.getenv('POSTGRES_HOST', 'postgres'),
+                'port': int(os.getenv('POSTGRES_PORT', 5432)),
+                'database': os.getenv('POSTGRES_DB', 'budget_db'),
+                'user': os.getenv('POSTGRES_USER', 'budget_user'),
+                'password': os.getenv('POSTGRES_PASSWORD', 'budget_password_2025')
+            }
+            app.logic_instance = BudgetLogic(connection_params)
+        return app.logic_instance
+    except Exception as e:
+        logger.error(f'Failed to initialize database connection: {e}')
+        raise DatabaseError("Database connection failed", e)
 
 # Ensure upload directory exists
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -73,11 +82,11 @@ def admin_required(f):
             logic = get_logic()
         except Exception as e:
             logger.error(f'Database connection failed: {e}')
-            flash('Database connection failed', 'error')
+            standardize_flash_message('Database connection failed', 'error', 'error')
             return redirect(url_for('index'))
         
         if not logic.db.is_admin(session.get('username')):
-            flash('Access denied. Admin privileges required.', 'error')
+            standardize_flash_message('Access denied. Admin privileges required.', 'error', 'warning')
             return redirect(url_for('index'))
         
         return f(*args, **kwargs)
@@ -89,8 +98,13 @@ def login():
         username = request.form.get('username')
         password = request.form.get('password')
         
-        if not username or not password:
-            flash('Please enter both username and password', 'error')
+        try:
+            validate_required_fields(
+                {'username': username, 'password': password}, 
+                ['username', 'password']
+            )
+        except ValidationError as e:
+            standardize_flash_message(str(e), 'error', 'warning')
             return render_template('login.html')
         
         # Get database connection 
@@ -98,119 +112,119 @@ def login():
             logic = get_logic()
         except Exception as e:
             logger.error(f'Database connection failed: {e}')
-            flash('Database connection failed', 'error')
+            standardize_flash_message('Database connection failed', 'error', 'error')
             return render_template('login.html')
         
         # Authenticate user
-        if logic.db.authenticate_user(username, password):
-            # Get user details including role
-            user_info = logic.db.get_user(username)
-            
-            session['logged_in'] = True
-            session['username'] = username
-            session['user_role'] = user_info.get('role', 'user') if user_info else 'user'
-            session['is_admin'] = logic.db.is_admin(username)
-            
-            flash(f'Welcome back, {username}!', 'success')
-            return redirect(url_for('index'))
-        else:
-            flash('Invalid username or password', 'error')
-            return render_template('login.html')
+        try:
+            if logic.db.authenticate_user(username, password):
+                # Get user details including role
+                user_info = logic.db.get_user(username)
+                
+                session['logged_in'] = True
+                session['username'] = username
+                session['user_role'] = user_info.get('role', 'user') if user_info else 'user'
+                session['is_admin'] = logic.db.is_admin(username)
+                
+                standardize_flash_message(f'Welcome back, {username}!', 'success', 'info')
+                return redirect(url_for('dashboard'))
+            else:
+                standardize_flash_message('Invalid username or password', 'error', 'warning')
+        except Exception as e:
+            logger.error(f'Authentication error: {e}')
+            standardize_flash_message('Authentication failed', 'error', 'error')
+        
+        return render_template('login.html')
     
-    # GET request - show login form
     return render_template('login.html')
+
+def handle_route_errors(template_name='error.html'):
+    """Decorator to handle route errors consistently"""
+    def decorator(f):
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            try:
+                return f(*args, **kwargs)
+            except DatabaseError as e:
+                logger.error(f'Database error in {f.__name__}: {e}')
+                standardize_flash_message('Database operation failed', 'error', 'error')
+                return render_template(template_name, message='Database operation failed')
+            except ValidationError as e:
+                logger.warning(f'Validation error in {f.__name__}: {e}')
+                standardize_flash_message(str(e), 'warning', 'warning')
+                return render_template(template_name, message=str(e))
+            except Exception as e:
+                logger.error(f'Unexpected error in {f.__name__}: {e}')
+                standardize_flash_message('An unexpected error occurred', 'error', 'error')
+                return render_template(template_name, message='An unexpected error occurred')
+        return wrapper
+    return decorator
 
 @app.route('/logout')
 def logout():
     session.clear()
-    flash('You have been logged out successfully', 'info')
+    standardize_flash_message('You have been logged out successfully', 'info', 'info')
     return redirect(url_for('login'))
 
 @app.route('/')
 @login_required
+@handle_route_errors('dashboard.html')
 def index():
     """Main dashboard page"""
-    try:
-        logic = get_logic()
-    except Exception as e:
-        logger.error(f'Database connection failed: {e}')
-        flash('Database connection failed', 'error')
-        return render_template('error.html', message='Database connection failed')
+    logic = get_logic()  # Will raise DatabaseError if connection fails
     
-    try:
-        # Get summary data for dashboard
-        categories = logic.get_categories()
-        transactions_count = len(logic.get_transactions())
-        
-        # Get recent transactions (last 10)
-        recent_transactions = logic.get_transactions()[-10:] if logic.get_transactions() else []
-        
-        return render_template('dashboard.html', 
-                             categories=categories,
-                             transactions_count=transactions_count,
-                             recent_transactions=recent_transactions,
-                             current_user=session.get('username'))
-    except Exception as e:
-        flash(f'Error loading dashboard: {e}', 'error')
-        return render_template('error.html', message=str(e))
+    # Get summary data for dashboard
+    categories = logic.get_categories()
+    transactions_count = len(logic.get_transactions())
+    
+    # Get recent transactions (last 10)
+    recent_transactions = logic.get_transactions()[-10:] if logic.get_transactions() else []
+    
+    return render_template('dashboard.html', 
+                         categories=categories,
+                         transactions_count=transactions_count,
+                         recent_transactions=recent_transactions,
+                         current_user=session.get('username'))
 
 @app.route('/transactions')
 @login_required
+@handle_route_errors('transactions.html')
 def transactions():
     """Display all transactions"""
-    try:
-        logic = get_logic()
-        flash('Database connection failed', 'error')
-        return render_template('error.html', message='Database connection failed')
+    logic = get_logic()  # Will raise DatabaseError if connection fails
     
-    try:
-        all_transactions = logic.get_transactions()
-        categories = logic.get_categories()
-        return render_template('transactions.html', 
-                             transactions=all_transactions, 
-                             categories=categories,
-                             current_user=session.get('username'))
-    except Exception as e:
-        flash(f'Error loading transactions: {e}', 'error')
-        return render_template('error.html', message=str(e))
+    all_transactions = logic.get_transactions()
+    categories = logic.get_categories()
+    return render_template('transactions.html', 
+                         transactions=all_transactions, 
+                         categories=categories,
+                         current_user=session.get('username'))
 
 @app.route('/budgets')
 @login_required
+@handle_route_errors('budgets.html')
 def budgets():
     """Display budget management page"""
-    try:
-        logic = get_logic()
-        flash('Database connection failed', 'error')
-        return render_template('error.html', message='Database connection failed')
+    logic = get_logic()
     
-    try:
-        categories = logic.get_categories()
-        budget_data = logic.get_all_budgets()  # Fix method name
-        return render_template('budgets.html', 
-                             categories=categories,
-                             budgets=budget_data,
-                             current_user=session.get('username'))
-    except Exception as e:
-        flash(f'Error loading budgets: {e}', 'error')
-        return render_template('error.html', message=str(e))
+    categories = logic.get_categories()
+    budget_data = logic.get_all_budgets()  # Fix method name
+    return render_template('budgets.html', 
+                         categories=categories,
+                         budgets=budget_data,
+                         current_user=session.get('username'))
 
 @app.route('/reports')
 @login_required
+@handle_route_errors('reports.html')
 def reports():
     """Display reports page"""
-    try:
-        logic = get_logic()
-        flash('Database connection failed', 'error')
-        return render_template('error.html', message='Database connection failed')
+    logic = get_logic()
     
-    try:
-        categories = logic.get_categories()
-        return render_template('reports.html', 
-                             categories=categories,
-                             current_user=session.get('username'))
-    except Exception as e:
-        flash(f'Error loading reports: {e}', 'error')
-        return render_template('error.html', message=str(e))
+    categories = logic.get_categories()
+    return render_template('reports.html', 
+                         categories=categories,
+                         current_user=session.get('username'))
 
 @app.route('/import_csv')
 @login_required
@@ -220,23 +234,17 @@ def import_csv():
 
 @app.route('/uncategorized')
 @login_required
+@handle_route_errors('uncategorized.html')
 def uncategorized():
     """Display uncategorized transactions"""
-    try:
-        logic = get_logic()
-        flash('Database connection failed', 'error')
-        return render_template('error.html', message='Database connection failed')
+    logic = get_logic()
     
-    try:
-        uncategorized_transactions = logic.get_uncategorized_transactions()
-        categories = logic.get_categories()
-        return render_template('uncategorized.html', 
-                             transactions=uncategorized_transactions,
-                             categories=categories,
-                             current_user=session.get('username'))
-    except Exception as e:
-        flash(f'Error loading uncategorized transactions: {e}', 'error')
-        return render_template('error.html', message=str(e))
+    uncategorized_transactions = logic.get_uncategorized_transactions()
+    categories = logic.get_categories()
+    return render_template('uncategorized.html', 
+                         transactions=uncategorized_transactions,
+                         categories=categories,
+                         current_user=session.get('username'))
 
 # API endpoints (all require login)
 @app.route('/api/categorize_transaction', methods=['POST'])
@@ -245,15 +253,12 @@ def categorize_transaction():
     """API endpoint to categorize a transaction"""
     try:
         logic = get_logic()
-        return jsonify({'error': 'Database connection failed'}), 500
-    
-    try:
         data = request.get_json()
+        
+        validate_required_fields(data or {}, ['transaction_id', 'category'])
+        
         transaction_id = data.get('transaction_id')
         category_name = data.get('category')
-        
-        if not transaction_id or not category_name:
-            return jsonify({'error': 'Missing transaction_id or category'}), 400
         
         success = logic.categorize_transaction(transaction_id, category_name)
         if success:
@@ -261,8 +266,13 @@ def categorize_transaction():
         else:
             return jsonify({'error': 'Failed to categorize transaction'}), 500
             
+    except ValidationError as e:
+        return jsonify({'error': str(e)}), 400
+    except DatabaseError as e:
+        return jsonify({'error': 'Database connection failed'}), 500
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f'Error in categorize_transaction: {e}')
+        return jsonify({'error': 'Internal server error'}), 500
 
 @app.route('/api/set_budget', methods=['POST'])
 @login_required

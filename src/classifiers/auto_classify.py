@@ -10,6 +10,9 @@ import math
 from datetime import datetime
 from typing import List, Dict, Tuple, Optional
 from collections import Counter
+import sys
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+from logging_config import get_logger
 
 
 class TransactionClassifier:
@@ -243,6 +246,7 @@ class AutoClassificationEngine:
     
     def __init__(self, logic):
         self.logic = logic
+        self.logger = get_logger(f'{__name__}.AutoClassificationEngine')
         # Initialize with empty list - will be populated in priority order
         self.classifiers = []
         
@@ -266,11 +270,11 @@ class AutoClassificationEngine:
             ])
             self._add_llm_classifiers()
         
-        print(f"🤖 Auto-classification engine initialized with {len(self.classifiers)} classifiers")
+        self.logger.info(f"Auto-classification engine initialized with {len(self.classifiers)} classifiers")
         if llm_priority:
-            print("🎯 LLM classifiers have PRIORITY")
+            self.logger.info("LLM classifiers have PRIORITY")
         else:
-            print("📋 Traditional classifiers have priority")
+            self.logger.info("Traditional classifiers have priority")
     
     def _add_llm_classifiers(self):
         """Add LLM classifiers in priority order (most capable first)"""
@@ -281,12 +285,12 @@ class AutoClassificationEngine:
             from .super_fast_classifier import SuperFastClassifier
             super_fast = SuperFastClassifier(self.logic)
             self.classifiers.append(super_fast)
-            print("✅ SuperFast Classifier (Rule+LLM hybrid) - PRIORITY #1")
+            self.logger.info("SuperFast Classifier (Rule+LLM hybrid) - PRIORITY #1")
             llm_added = True
         except ImportError:
             pass
         except Exception as e:
-            print(f"⚠️  SuperFast Classifier failed: {e}")
+            self.logger.warning(f"SuperFast Classifier failed: {e}")
         
         # Priority 2: Docker LLM classifier (pure LLM with Docker optimization)
         try:
@@ -294,12 +298,12 @@ class AutoClassificationEngine:
             llm_classifier = DockerLLMClassifier(self.logic)
             if llm_classifier.available:
                 self.classifiers.append(llm_classifier)
-                print("✅ Docker LLM Classifier - PRIORITY #2")
+                self.logger.info("Docker LLM Classifier - PRIORITY #2")
                 llm_added = True
         except ImportError:
             pass
         except Exception as e:
-            print(f"⚠️  Docker LLM Classifier failed: {e}")
+            self.logger.warning(f"Docker LLM Classifier failed: {e}")
         
         # Priority 3: Fast LLM classifier (fallback pure LLM)
         if not llm_added:
@@ -308,17 +312,17 @@ class AutoClassificationEngine:
                 fast_llm = FastLLMClassifier(self.logic)
                 if fast_llm.available:
                     self.classifiers.append(fast_llm)
-                    print("✅ Fast LLM Classifier - PRIORITY #3")
+                    self.logger.info("Fast LLM Classifier - PRIORITY #3")
                     llm_added = True
             except ImportError:
                 pass
             except Exception as e:
-                print(f"⚠️  Fast LLM Classifier failed: {e}")
+                self.logger.warning(f"Fast LLM Classifier failed: {e}")
         
         if not llm_added:
-            print("ℹ️  No LLM classifiers available - falling back to rule-based classification")
+            self.logger.info("No LLM classifiers available - falling back to rule-based classification")
         else:
-            print("🎯 LLM-supported classification is now DEFAULT")
+            self.logger.info("LLM-supported classification is now DEFAULT")
     
     def classify_transaction(self, transaction_data) -> List[Dict]:
         """
@@ -434,7 +438,7 @@ class AutoClassificationEngine:
                             traditional_classifications += 1
                             
                     except Exception as e:
-                        print(f"Error classifying transaction {tx_id}: {e}")
+                        self.logger.error(f"Error classifying transaction {tx_id}: {e}")
                 
                 # Add to review queue if confidence is moderate (0.4-threshold)
                 elif best_suggestion['confidence'] >= 0.4:
@@ -447,14 +451,14 @@ class AutoClassificationEngine:
                         'needs_review': True
                     })
         
-        # Print summary of classification results
+        # Log summary of classification results
         if classified_count > 0:
-            print(f"📊 Classification Summary:")
-            print(f"   🤖 LLM Classifications: {llm_classifications}")
-            print(f"   📋 Traditional Classifications: {traditional_classifications}")
-            print(f"   📝 Total Auto-classified: {classified_count}")
+            self.logger.info(f"Classification Summary:")
+            self.logger.info(f"   LLM Classifications: {llm_classifications}")
+            self.logger.info(f"   Traditional Classifications: {traditional_classifications}")
+            self.logger.info(f"   Total Auto-classified: {classified_count}")
             if suggestions_for_review:
-                print(f"   👀 Requiring Review: {len(suggestions_for_review)}")
+                self.logger.info(f"   Requiring Review: {len(suggestions_for_review)}")
         
         return classified_count, suggestions_for_review
 

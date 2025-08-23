@@ -92,11 +92,25 @@ def init_logging():
     """Initialize logging with environment-based configuration"""
     log_level = os.getenv('LOG_LEVEL', 'INFO')
     log_file = os.getenv('LOG_FILE')  # Optional
+    environment = os.getenv('ENVIRONMENT', 'production')
     
-    if os.getenv('ENVIRONMENT') == 'development':
-        log_level = 'DEBUG'
+    # Environment-specific defaults
+    if environment.lower() == 'development':
+        log_level = os.getenv('LOG_LEVEL', 'DEBUG')
+        # Enable more verbose console output for development
+        return setup_logging(level=log_level, log_file=log_file)
     
-    return setup_logging(level=log_level, log_file=log_file)
+    elif environment.lower() == 'test':
+        log_level = os.getenv('LOG_LEVEL', 'WARNING')
+        # Minimize logging during tests
+        return setup_logging(level=log_level, log_file=log_file)
+    
+    else:
+        # Production: Log to file and console with INFO level
+        log_level = os.getenv('LOG_LEVEL', 'INFO')
+        if not log_file:
+            log_file = '/app/logs/budget.log'  # Default production log file
+        return setup_logging(level=log_level, log_file=log_file)
 
 
 # Default logger instance

@@ -8,6 +8,7 @@ import psycopg2.extras
 import os
 from typing import List, Dict, Optional, Tuple
 from logging_config import get_logger
+from error_handling import DatabaseError, ValidationError, handle_database_operation, DatabaseTransaction
 
 
 class BudgetDb:
@@ -45,7 +46,7 @@ class BudgetDb:
             # Set up dict cursor for easier result handling
             psycopg2.extras.register_default_json(globally=True)
         except psycopg2.Error as e:
-            raise Exception(f"Failed to connect to PostgreSQL database: {e}")
+            raise DatabaseError(f"Failed to connect to PostgreSQL database", e)
 
     def _check_and_init_db(self):
         """Check if database is initialized, warn if not"""
@@ -87,43 +88,39 @@ class BudgetDb:
         c.execute("SELECT name FROM categories ORDER BY name")
         return [row[0] for row in c.fetchall()]
 
+    @handle_database_operation("add_category")
     def add_category(self, name: str):
         """Add a new category"""
-        c = self.conn.cursor()
-        try:
-            c.execute("INSERT INTO categories (name) VALUES (%s)", (name,))
-            self.conn.commit()
-        except psycopg2.IntegrityError:
-            self.conn.rollback()
-            raise ValueError(f"Category '{name}' already exists")
+        if not name or not name.strip():
+            raise ValidationError("Category name cannot be empty")
+            
+        with DatabaseTransaction(self.conn) as cursor:
+            cursor.execute("INSERT INTO categories (name) VALUES (%s)", (name.strip(),))
 
+    @handle_database_operation("remove_category")
     def remove_category(self, name: str):
         """Remove a category and cascade operations"""
-        c = self.conn.cursor()
-        try:
+        if not name or not name.strip():
+            raise ValidationError("Category name cannot be empty")
+            
+        with DatabaseTransaction(self.conn) as cursor:
             # First get the category ID
-            c.execute("SELECT id FROM categories WHERE name = %s", (name,))
-            cat_row = c.fetchone()
+            cursor.execute("SELECT id FROM categories WHERE name = %s", (name.strip(),))
+            cat_row = cursor.fetchone()
             if not cat_row:
-                raise ValueError(f"Category '{name}' not found")
+                raise ValidationError(f"Category '{name}' not found")
             cat_id = cat_row[0]
             
             # Remove all associated budgets
-            c.execute("DELETE FROM budgets WHERE category_id = %s", (cat_id,))
+            cursor.execute("DELETE FROM budgets WHERE category_id = %s", (cat_id,))
             
             # Remove category assignments from transactions (set to NULL)
-            c.execute("UPDATE transactions SET category_id = NULL WHERE category_id = %s", (cat_id,))
+            cursor.execute("UPDATE transactions SET category_id = NULL WHERE category_id = %s", (cat_id,))
             
             # Remove the category itself
-            c.execute("DELETE FROM categories WHERE name = %s", (name,))
+            cursor.execute("DELETE FROM categories WHERE name = %s", (name.strip(),))
             
-            if c.rowcount == 0:
-                raise ValueError(f"Category '{name}' not found")
-                
-            self.conn.commit()
-        except psycopg2.Error as e:
-            self.conn.rollback()
-            raise Exception(f"Failed to remove category: {e}")
+            self.logger.info(f"Successfully removed category '{name}' and all associated data")
 
     def get_category_id(self, category_name: str) -> Optional[int]:
         """Get category ID by name"""
@@ -189,31 +186,40 @@ class BudgetDb:
 
     # === Transaction Operations ===
     
+    @handle_database_operation("add_transaction")
     def add_transaction(self, date: str, description: str, amount: float, 
                        category_name: str, verifikationsnummer: str = None,
                        confidence: float = None, method: str = None):
         """Add a new transaction with optional confidence tracking"""
-        c = self.conn.cursor()
-        try:
+        
+        # Validate required fields
+        if not date or not description or amount is None or not category_name:
+            raise ValidationError("Missing required transaction fields")
+            
+        if not isinstance(amount, (int, float)):
+            raise ValidationError("Amount must be a number")
+            
+        with DatabaseTransaction(self.conn) as cursor:
             # Get category ID, create if it doesn't exist
             cat_id = self.get_category_id(category_name)
             if not cat_id:
                 self.add_category(category_name)
                 cat_id = self.get_category_id(category_name)
+                if not cat_id:
+                    raise ValidationError(f"Failed to create category: {category_name}")
             
             # Parse date for year/month
-            year = int(date.split('-')[0])
-            month = int(date.split('-')[1])
+            try:
+                year = int(date.split('-')[0])
+                month = int(date.split('-')[1])
+            except (ValueError, IndexError):
+                raise ValidationError("Invalid date format. Expected YYYY-MM-DD")
             
-            c.execute("""
+            cursor.execute("""
                 INSERT INTO transactions (verifikationsnummer, date, description, amount, category_id, year, month,
                                         classification_confidence, classification_method)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (verifikationsnummer, date, description, amount, cat_id, year, month, confidence, method))
-            self.conn.commit()
-        except psycopg2.Error as e:
-            self.conn.rollback()
-            raise Exception(f"Failed to add transaction: {e}")
 
     def get_transactions(self, category: str = None, year: int = None, 
                         limit: int = None, offset: int = None) -> List[Dict]:
@@ -293,21 +299,25 @@ class BudgetDb:
             return dict(row)
         return None
 
+    @handle_database_operation("classify_transaction")
     def classify_transaction(self, transaction_id: int, category_name: str, 
-                           confidence: float = None, method: str = "Manual"):
-        """Classify a transaction to a specific category with confidence tracking"""
-        c = self.conn.cursor()
-        try:
+                           confidence: float = None, method: str = None):
+        """Classify a transaction with confidence tracking"""
+        
+        if not transaction_id or not category_name:
+            raise ValidationError("Transaction ID and category name are required")
+            
+        with DatabaseTransaction(self.conn) as cursor:
             cat_id = self.get_category_id(category_name)
             if not cat_id:
                 # Create the category if it doesn't exist
                 self.add_category(category_name)
                 cat_id = self.get_category_id(category_name)
                 if not cat_id:
-                    raise ValueError(f"Failed to create category: {category_name}")
+                    raise ValidationError(f"Failed to create category: {category_name}")
             
             # Update transaction with category and confidence info
-            c.execute("""
+            cursor.execute("""
                 UPDATE transactions 
                 SET category_id = %s, 
                     classification_confidence = %s,
@@ -316,13 +326,10 @@ class BudgetDb:
                 WHERE id = %s
             """, (cat_id, confidence, method, transaction_id))
             
-            if c.rowcount == 0:
-                raise ValueError(f"Transaction with ID {transaction_id} not found")
-            self.conn.commit()
+            if cursor.rowcount == 0:
+                raise ValidationError(f"Transaction with ID {transaction_id} not found")
+                
             return True
-        except psycopg2.Error as e:
-            self.conn.rollback()
-            raise Exception(f"Failed to classify transaction: {e}")
 
     def import_transactions_bulk(self, transactions_data, category_name: str = "Uncategorized"):
         """Bulk import transactions"""
