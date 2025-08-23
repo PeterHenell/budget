@@ -515,14 +515,42 @@ def api_set_budget_for_year(year):
     
     try:
         data = request.get_json()
-        category = data.get('category')
-        amount = data.get('amount')
         
-        if not category or amount is None:
-            return jsonify({'error': 'Missing required fields: category, amount'}), 400
+        # Handle bulk budget updates
+        if 'budgets' in data:
+            budgets = data.get('budgets', [])
+            success_count = 0
+            errors = []
+            
+            for budget in budgets:
+                category = budget.get('category')
+                amount = budget.get('amount')
+                
+                if category and amount is not None:
+                    try:
+                        logic.set_budget(category, year, float(amount))
+                        success_count += 1
+                    except Exception as e:
+                        errors.append(f'{category}: {str(e)}')
+            
+            return jsonify({
+                'success': True,
+                'saved': success_count,
+                'total': len(budgets),
+                'errors': errors
+            })
         
-        success = logic.set_budget(category, year, float(amount))
-        return jsonify({'success': success, 'message': f'Budget set for {category}'})
+        # Handle single budget update (backward compatibility)
+        else:
+            category = data.get('category')
+            amount = data.get('amount')
+            
+            if not category or amount is None:
+                return jsonify({'error': 'Missing required fields: category, amount'}), 400
+            
+            success = logic.set_budget(category, year, float(amount))
+            return jsonify({'success': success, 'message': f'Budget set for {category}'})
+            
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

@@ -60,13 +60,17 @@
                 </div>
                 
                 <div id="budgetTable" style="display: none;">
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle me-1"></i>
+                        <strong>Tip:</strong> Click on any budget amount to edit it directly. Press <kbd>Enter</kbd> to save quickly, or <kbd>Ctrl+S</kbd> to save all changes. Don't forget to save your changes!
+                    </div>
                     <div class="table-responsive">
                         <table class="table table-hover">
                             <thead>
                                 <tr>
                                     <th style="width: 40%;">Category</th>
-                                    <th style="width: 30%;">Yearly Budget (SEK)</th>
-                                    <th style="width: 20%;">Monthly Equivalent</th>
+                                    <th style="width: 25%;">Yearly Budget (SEK)</th>
+                                    <th style="width: 25%;">Monthly Equivalent</th>
                                     <th style="width: 10%;">Actions</th>
                                 </tr>
                             </thead>
@@ -75,16 +79,29 @@
                         </table>
                     </div>
                     
+                    <!-- Save Button and Status -->
                     <div class="mt-3 p-3 bg-light rounded">
-                        <div class="row">
-                            <div class="col-md-4">
-                                <strong>Total Yearly Budget: <span id="totalYearlyBudget">0 SEK</span></strong>
+                        <div class="row align-items-center">
+                            <div class="col-md-8">
+                                <div class="row">
+                                    <div class="col-md-4">
+                                        <strong>Total Yearly Budget: <span id="totalYearlyBudget">0 SEK</span></strong>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <strong>Total Monthly Budget: <span id="totalMonthlyBudget">0 SEK</span></strong>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <small class="text-muted">Categories: <span id="categoryCount">0</span></small>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="col-md-4">
-                                <strong>Total Monthly Budget: <span id="totalMonthlyBudget">0 SEK</span></strong>
-                            </div>
-                            <div class="col-md-4">
-                                <small class="text-muted">Categories: <span id="categoryCount">0</span></small>
+                            <div class="col-md-4 text-end">
+                                <div class="d-flex gap-2 justify-content-end align-items-center">
+                                    <span id="saveStatus" class="text-muted small" style="display: none;"></span>
+                                    <button type="button" class="btn btn-success btn-lg" id="saveBudgetsBtn" onclick="saveAllBudgets()" disabled>
+                                        <i class="bi bi-floppy me-2"></i>Save All Budgets
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -112,6 +129,7 @@
                     <div class="mb-3">
                         <label for="categoryName" class="form-label">Category Name</label>
                         <input type="text" class="form-control" id="categoryName" required>
+                        <div class="form-text">Choose a descriptive name for your new budget category</div>
                     </div>
                 </form>
             </div>
@@ -122,49 +140,37 @@
         </div>
     </div>
 </div>
-
-<!-- Edit Budget Modal -->
-<div class="modal fade" id="editBudgetModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Edit Budget</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <form id="editBudgetForm">
-                    <div class="mb-3">
-                        <label class="form-label">Category</label>
-                        <input type="text" class="form-control" id="editCategoryName" readonly>
-                    </div>
-                    <div class="mb-3">
-                        <label for="editBudgetAmount" class="form-label">Yearly Budget Amount (SEK)</label>
-                        <input type="number" class="form-control" id="editBudgetAmount" step="0.01" min="0" required>
-                        <div class="form-text">This amount will be divided across all 12 months</div>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Monthly Equivalent</label>
-                        <input type="text" class="form-control" id="monthlyEquivalent" readonly>
-                    </div>
-                </form>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary" onclick="saveBudget()">Save Changes</button>
-            </div>
-        </div>
-    </div>
-</div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
     let currentBudgets = [];
+    let originalBudgets = [];
     let editingCategory = null;
+    let hasUnsavedChanges = false;
     
     // Load budgets on page load
     document.addEventListener('DOMContentLoaded', function() {
         loadBudgets();
+        
+        // Add keyboard shortcut for saving (Ctrl+S)
+        document.addEventListener('keydown', function(e) {
+            if (e.ctrlKey && e.key === 's') {
+                e.preventDefault();
+                if (hasUnsavedChanges) {
+                    saveAllBudgets();
+                }
+            }
+        });
+        
+        // Warn before leaving page with unsaved changes
+        window.addEventListener('beforeunload', function(e) {
+            if (hasUnsavedChanges) {
+                e.preventDefault();
+                e.returnValue = 'You have unsaved budget changes. Are you sure you want to leave?';
+                return e.returnValue;
+            }
+        });
     });
     
     async function loadBudgets() {
@@ -222,24 +228,31 @@
                         <strong>${budget.category}</strong>
                     </td>
                     <td>
-                        <span class="fw-bold text-primary">${yearlyAmount.toLocaleString('sv-SE')} SEK</span>
-                    </td>
-                    <td>
-                        <span class="text-muted">${monthlyAmount.toLocaleString('sv-SE')} SEK</span>
-                    </td>
-                    <td>
-                        <div class="btn-group" role="group">
-                            <button type="button" class="btn btn-sm btn-outline-primary" 
-                                    onclick="editBudget('${budget.category}', ${yearlyAmount})" 
-                                    title="Edit budget">
-                                <i class="bi bi-pencil"></i>
-                            </button>
-                            <button type="button" class="btn btn-sm btn-outline-danger" 
-                                    onclick="deleteCategory('${budget.category}')" 
-                                    title="Delete category">
-                                <i class="bi bi-trash"></i>
-                            </button>
+                        <div class="input-group">
+                            <input type="number" 
+                                   class="form-control budget-input" 
+                                   id="budget-${budget.category}" 
+                                   value="${yearlyAmount}" 
+                                   min="0" 
+                                   step="0.01"
+                                   data-category="${budget.category}"
+                                   onchange="onBudgetChange('${budget.category}')"
+                                   onkeyup="onBudgetKeyup(event, '${budget.category}')">
+                            <span class="input-group-text">SEK</span>
                         </div>
+                    </td>
+                    <td>
+                        <span class="text-muted" id="monthly-${budget.category}">
+                            ${monthlyAmount.toLocaleString('sv-SE')} SEK/månad
+                        </span>
+                    </td>
+                    <td>
+                        <button type="button" class="btn btn-sm btn-outline-danger" 
+                                onclick="deleteCategory('${budget.category}')" 
+                                title="Delete category"
+                                ${budget.category === 'Uncategorized' ? 'disabled' : ''}>
+                            <i class="bi bi-trash"></i>
+                        </button>
                     </td>
                 </tr>
             `;
@@ -251,42 +264,134 @@
         document.getElementById('totalYearlyBudget').textContent = `${totalYearly.toLocaleString('sv-SE')} SEK`;
         document.getElementById('totalMonthlyBudget').textContent = `${(totalYearly / 12).toLocaleString('sv-SE')} SEK`;
         document.getElementById('categoryCount').textContent = currentBudgets.length;
-    }
-    
-    function editBudget(category, currentAmount) {
-        editingCategory = category;
-        document.getElementById('editCategoryName').value = category;
-        document.getElementById('editBudgetAmount').value = currentAmount;
-        updateMonthlyEquivalent();
         
-        const modal = new bootstrap.Modal(document.getElementById('editBudgetModal'));
-        modal.show();
+        // Store original values for comparison
+        originalBudgets = JSON.parse(JSON.stringify(currentBudgets));
+        hasUnsavedChanges = false;
+        updateSaveButton();
     }
     
-    // Update monthly equivalent when yearly amount changes
-    document.getElementById('editBudgetAmount').addEventListener('input', updateMonthlyEquivalent);
+    function onBudgetChange(category) {
+        updateMonthlyDisplay(category);
+        updateTotals();
+        checkForChanges();
+    }
     
-    function updateMonthlyEquivalent() {
-        const yearly = parseFloat(document.getElementById('editBudgetAmount').value) || 0;
+    function onBudgetKeyup(event, category) {
+        // Save on Enter key
+        if (event.key === 'Enter') {
+            event.target.blur();
+            saveAllBudgets();
+        }
+        updateMonthlyDisplay(category);
+        updateTotals();
+        checkForChanges();
+    }
+    
+    function updateMonthlyDisplay(category) {
+        const yearlyInput = document.getElementById(`budget-${category}`);
+        const monthlySpan = document.getElementById(`monthly-${category}`);
+        
+        const yearly = parseFloat(yearlyInput.value) || 0;
         const monthly = yearly / 12;
-        document.getElementById('monthlyEquivalent').value = `${monthly.toLocaleString('sv-SE')} SEK`;
+        
+        monthlySpan.textContent = `${monthly.toLocaleString('sv-SE')} SEK/månad`;
     }
     
-    async function saveBudget() {
-        if (!editingCategory) return;
+    function updateTotals() {
+        let totalYearly = 0;
         
+        currentBudgets.forEach(budget => {
+            const input = document.getElementById(`budget-${budget.category}`);
+            if (input) {
+                totalYearly += parseFloat(input.value) || 0;
+            }
+        });
+        
+        document.getElementById('totalYearlyBudget').textContent = `${totalYearly.toLocaleString('sv-SE')} SEK`;
+        document.getElementById('totalMonthlyBudget').textContent = `${(totalYearly / 12).toLocaleString('sv-SE')} SEK`;
+    }
+    
+    function checkForChanges() {
+        hasUnsavedChanges = false;
+        
+        for (let budget of currentBudgets) {
+            const input = document.getElementById(`budget-${budget.category}`);
+            const currentValue = parseFloat(input.value) || 0;
+            const originalBudget = originalBudgets.find(b => b.category === budget.category);
+            const originalValue = originalBudget ? originalBudget.yearly_budget : 0;
+            
+            if (Math.abs(currentValue - originalValue) > 0.01) {
+                hasUnsavedChanges = true;
+                break;
+            }
+        }
+        
+        updateSaveButton();
+    }
+    
+    function updateSaveButton() {
+        const saveBtn = document.getElementById('saveBudgetsBtn');
+        const saveStatus = document.getElementById('saveStatus');
+        
+        if (hasUnsavedChanges) {
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = '<i class="bi bi-floppy me-2"></i>Save All Budgets';
+            saveBtn.className = 'btn btn-success btn-lg';
+            saveStatus.style.display = 'none';
+        } else {
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = '<i class="bi bi-check-circle me-2"></i>All Saved';
+            saveBtn.className = 'btn btn-outline-success btn-lg';
+        }
+    }
+    
+    async function saveAllBudgets() {
+        const saveBtn = document.getElementById('saveBudgetsBtn');
+        const saveStatus = document.getElementById('saveStatus');
         const year = document.getElementById('budgetYear').value;
-        const amount = parseFloat(document.getElementById('editBudgetAmount').value) || 0;
+        
+        // Show saving status
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Saving...';
+        saveStatus.textContent = 'Saving budgets...';
+        saveStatus.className = 'text-info small';
+        saveStatus.style.display = 'inline';
         
         try {
+            // Collect all changed budgets
+            const budgetsToSave = [];
+            
+            for (let budget of currentBudgets) {
+                const input = document.getElementById(`budget-${budget.category}`);
+                const newValue = parseFloat(input.value) || 0;
+                const originalBudget = originalBudgets.find(b => b.category === budget.category);
+                const originalValue = originalBudget ? originalBudget.yearly_budget : 0;
+                
+                if (Math.abs(newValue - originalValue) > 0.01) {
+                    budgetsToSave.push({
+                        category: budget.category,
+                        amount: newValue
+                    });
+                }
+            }
+            
+            if (budgetsToSave.length === 0) {
+                saveStatus.textContent = 'No changes to save';
+                saveStatus.className = 'text-muted small';
+                setTimeout(() => saveStatus.style.display = 'none', 2000);
+                updateSaveButton();
+                return;
+            }
+            
+            // Use bulk save API
             const response = await fetch(`/api/budgets/${year}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                    category: editingCategory,
-                    amount: amount
+                    budgets: budgetsToSave
                 })
             });
             
@@ -296,17 +401,39 @@
                 throw new Error(data.error);
             }
             
-            // Close modal
-            bootstrap.Modal.getInstance(document.getElementById('editBudgetModal')).hide();
+            // Show results
+            const saveCount = data.saved || 0;
+            const errorCount = data.errors ? data.errors.length : 0;
             
-            // Reload budgets
+            if (errorCount === 0) {
+                saveStatus.textContent = `Saved ${saveCount} budgets successfully!`;
+                saveStatus.className = 'text-success small';
+                showToast(`Successfully saved ${saveCount} budget${saveCount === 1 ? '' : 's'}!`, 'success');
+            } else {
+                saveStatus.textContent = `Saved ${saveCount}, ${errorCount} errors`;
+                saveStatus.className = 'text-warning small';
+                showToast(`Saved ${saveCount} budgets, but ${errorCount} failed.`, 'warning');
+                console.warn('Budget save errors:', data.errors);
+            }
+            
+            // Hide status after delay
+            setTimeout(() => {
+                saveStatus.style.display = 'none';
+            }, 3000);
+            
+            // Reload to get fresh data
             await loadBudgets();
             
-            showToast(`Budget updated for ${editingCategory}`, 'success');
-            
         } catch (error) {
-            console.error('Error saving budget:', error);
-            showToast('Error saving budget: ' + error.message, 'danger');
+            console.error('Error saving budgets:', error);
+            saveStatus.textContent = 'Save failed!';
+            saveStatus.className = 'text-danger small';
+            showToast('Error saving budgets: ' + error.message, 'danger');
+            
+            setTimeout(() => {
+                saveStatus.style.display = 'none';
+                updateSaveButton();
+            }, 5000);
         }
     }
     
