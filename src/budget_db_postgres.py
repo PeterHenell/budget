@@ -588,3 +588,21 @@ class BudgetDb:
         except psycopg2.Error:
             self.conn.rollback()
             return False
+
+    def get_classified_transactions_for_patterns(self):
+        """Get classified transactions with categories for building classification patterns"""
+        c = self.conn.cursor()
+        c.execute("""
+            SELECT t.description, t.amount, cat.name, t.year, t.month
+            FROM transactions t
+            JOIN categories cat ON t.category_id = cat.id
+            WHERE cat.name != 'Uncategorized' AND t.category_id IS NOT NULL
+            ORDER BY cat.name, t.date DESC
+        """)
+        return c.fetchall()
+
+    def get_unclassified_transactions(self):
+        """Get transactions that have no category assigned (category_id IS NULL)"""
+        c = self.conn.cursor()
+        c.execute("SELECT verifikationsnummer, date, description, amount FROM transactions WHERE category_id IS NULL")
+        return c.fetchall()

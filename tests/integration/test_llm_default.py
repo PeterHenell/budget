@@ -10,7 +10,7 @@ import os
 sys.path.insert(0, '/app/src')
 
 from logic import BudgetLogic
-from auto_classify import AutoClassificationEngine
+from classifiers.auto_classify import AutoClassificationEngine
 import pandas as pd
 import tempfile
 

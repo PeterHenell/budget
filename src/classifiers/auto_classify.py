@@ -141,17 +141,8 @@ class LearningClassifier(TransactionClassifier):
     
     def _build_patterns(self):
         """Build classification patterns from existing classified transactions"""
-        c = self.logic.conn.cursor()
-        
-        # Get all classified transactions with their categories
-        c.execute("""
-            SELECT t.description, t.amount, cat.name, t.year, t.month
-            FROM transactions t
-            JOIN categories cat ON t.category_id = cat.id
-            WHERE cat.name != 'Uncategorized'
-        """)
-        
-        classified_transactions = c.fetchall()
+        # Get classified transactions through proper abstraction layer
+        classified_transactions = self.logic.get_classified_transactions_for_patterns()
         
         if not classified_transactions:
             return

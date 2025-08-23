@@ -25,5 +25,7 @@ RUN pip install --no-cache-dir \
 
 EXPOSE 5000
 
-# Default command - install requirements and run app
-CMD ["sh", "-c", "pip install --no-cache-dir -r requirements.txt && python web_app.py"]
+# Default command - install requirements and run app with syntax checking
+COPY start-web.sh /start-web.sh
+RUN chmod +x /start-web.sh
+CMD ["sh", "-c", "pip install --no-cache-dir -r requirements.txt && /start-web.sh"]

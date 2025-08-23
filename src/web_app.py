@@ -280,9 +280,9 @@ def set_budget():
     """API endpoint to set budget for category and year"""
     try:
         logic = get_logic()
-        return jsonify({'error': 'Database connection failed'}), 500
+        if not logic:
+            return jsonify({'error': 'Database connection failed'}), 500
     
-    try:
         data = request.get_json()
         category = data.get('category')
         year = data.get('year')
@@ -305,10 +305,12 @@ def set_budget():
 def monthly_report(year, month):
     """API endpoint for monthly spending report"""
     try:
+
         logic = get_logic()
-        return jsonify({'error': 'Database connection failed'}), 500
-    
-    try:
+
+        if not logic:
+
+            return jsonify({'error': 'Database connection failed'}), 500
         report = logic.get_spending_report(year, month)
         return jsonify(report)
     except Exception as e:
@@ -319,10 +321,12 @@ def monthly_report(year, month):
 def yearly_report(year):
     """API endpoint for yearly spending report"""
     try:
+
         logic = get_logic()
-        return jsonify({'error': 'Database connection failed'}), 500
-    
-    try:
+
+        if not logic:
+
+            return jsonify({'error': 'Database connection failed'}), 500
         report = logic.generate_yearly_report(year)
         return jsonify(report)
     except Exception as e:
@@ -334,6 +338,10 @@ def upload_file():
     """Handle CSV file upload and import"""
     try:
         logic = get_logic()
+        if not logic:
+            flash('Database connection failed', 'error')
+            return redirect(url_for('import_csv'))
+    except Exception as e:
         flash('Database connection failed', 'error')
         return redirect(url_for('import_csv'))
     
@@ -374,10 +382,12 @@ def upload_file():
 def api_categories():
     """API endpoint to get all categories"""
     try:
+
         logic = get_logic()
-        return jsonify({'error': 'Database connection failed'}), 500
-    
-    try:
+
+        if not logic:
+
+            return jsonify({'error': 'Database connection failed'}), 500
         categories = logic.get_categories()
         return jsonify(categories)
     except Exception as e:
@@ -388,10 +398,12 @@ def api_categories():
 def api_create_category():
     """API endpoint to create a new category"""
     try:
+
         logic = get_logic()
-        return jsonify({'error': 'Database connection failed'}), 500
-    
-    try:
+
+        if not logic:
+
+            return jsonify({'error': 'Database connection failed'}), 500
         data = request.get_json()
         name = data.get('name', '').strip()
         
@@ -410,10 +422,12 @@ def api_create_category():
 def api_delete_category(category_name):
     """API endpoint to delete a category"""
     try:
+
         logic = get_logic()
-        return jsonify({'error': 'Database connection failed'}), 500
-    
-    try:
+
+        if not logic:
+
+            return jsonify({'error': 'Database connection failed'}), 500
         logic.remove_category(category_name)
         return jsonify({'success': True, 'message': f'Category "{category_name}" deleted successfully'})
     except ValueError as e:
@@ -426,10 +440,12 @@ def api_delete_category(category_name):
 def api_transactions():
     """API endpoint to get transactions with pagination"""
     try:
+
         logic = get_logic()
-        return jsonify({'error': 'Database connection failed'}), 500
-    
-    try:
+
+        if not logic:
+
+            return jsonify({'error': 'Database connection failed'}), 500
         page = int(request.args.get('page', 1))
         per_page = int(request.args.get('per_page', 50))
         
@@ -455,10 +471,12 @@ def api_transactions():
 def api_uncategorized():
     """API endpoint to get uncategorized transactions"""
     try:
+
         logic = get_logic()
-        return jsonify({'error': 'Database connection failed'}), 500
-    
-    try:
+
+        if not logic:
+
+            return jsonify({'error': 'Database connection failed'}), 500
         page = int(request.args.get('page', 1))
         per_page = int(request.args.get('per_page', 50))
         
@@ -499,10 +517,12 @@ def api_uncategorized():
 def api_budgets(year):
     """API endpoint to get budgets for a specific year"""
     try:
+
         logic = get_logic()
-        return jsonify({'error': 'Database connection failed'}), 500
-    
-    try:
+
+        if not logic:
+
+            return jsonify({'error': 'Database connection failed'}), 500
         # Get all categories
         all_categories = logic.get_categories()
         
@@ -528,10 +548,12 @@ def api_budgets(year):
 def api_set_budget():
     """API endpoint to set a single budget"""
     try:
+
         logic = get_logic()
-        return jsonify({'error': 'Database connection failed'}), 500
-    
-    try:
+
+        if not logic:
+
+            return jsonify({'error': 'Database connection failed'}), 500
         data = request.get_json()
         category = data.get('category')
         year = data.get('year')
@@ -550,10 +572,12 @@ def api_set_budget():
 def api_set_budget_for_year(year):
     """API endpoint to set a budget for a specific year"""
     try:
+
         logic = get_logic()
-        return jsonify({'error': 'Database connection failed'}), 500
-    
-    try:
+
+        if not logic:
+
+            return jsonify({'error': 'Database connection failed'}), 500
         data = request.get_json()
         
         # Handle bulk budget updates
@@ -605,10 +629,12 @@ def api_monthly_report(year, month):
 def api_classify():
     """API endpoint to classify a single transaction"""
     try:
+
         logic = get_logic()
-        return jsonify({'error': 'Database connection failed'}), 500
-    
-    try:
+
+        if not logic:
+
+            return jsonify({'error': 'Database connection failed'}), 500
         data = request.get_json()
         transaction_id = data.get('transaction_id')
         category = data.get('category')
@@ -631,10 +657,12 @@ def api_classify():
 def api_classify_batch():
     """API endpoint to classify multiple transactions"""
     try:
+
         logic = get_logic()
-        return jsonify({'error': 'Database connection failed'}), 500
-    
-    try:
+
+        if not logic:
+
+            return jsonify({'error': 'Database connection failed'}), 500
         data = request.get_json()
         transactions = data.get('transactions', [])
         
@@ -664,10 +692,12 @@ def api_classify_batch():
 def api_auto_classify():
     """API endpoint for auto-classification"""
     try:
+
         logic = get_logic()
-        return jsonify({'error': 'Database connection failed'}), 500
-    
-    try:
+
+        if not logic:
+
+            return jsonify({'error': 'Database connection failed'}), 500
         data = request.get_json()
         confidence_threshold = float(data.get('confidence_threshold', 0.8))
         max_suggestions = int(data.get('max_suggestions', 100))
@@ -695,10 +725,12 @@ def api_auto_classify():
 def api_delete_transaction(transaction_id):
     """API endpoint to delete a single transaction"""
     try:
+
         logic = get_logic()
-        return jsonify({'error': 'Database connection failed'}), 500
-    
-    try:
+
+        if not logic:
+
+            return jsonify({'error': 'Database connection failed'}), 500
         success = logic.delete_transaction(transaction_id)
         return jsonify({'success': success, 'message': 'Transaction deleted successfully'})
     except Exception as e:
@@ -709,10 +741,12 @@ def api_delete_transaction(transaction_id):
 def api_delete_transactions_bulk():
     """API endpoint to delete multiple transactions"""
     try:
+
         logic = get_logic()
-        return jsonify({'error': 'Database connection failed'}), 500
-    
-    try:
+
+        if not logic:
+
+            return jsonify({'error': 'Database connection failed'}), 500
         data = request.get_json()
         transaction_ids = data.get('transaction_ids', [])
         
@@ -737,6 +771,9 @@ def api_import():
     """API endpoint for CSV import"""
     try:
         logic = get_logic()
+        if not logic:
+            return jsonify({'error': 'Database connection failed'}), 500
+    except Exception as e:
         return jsonify({'error': 'Database connection failed'}), 500
     
     if 'file' not in request.files:
@@ -774,8 +811,8 @@ def api_import():
 def manage_users():
     """Admin page for managing users"""
     try:
-        try:
         logic = get_logic()
+        if not logic:
             flash('Database connection failed', 'error')
             return redirect(url_for('index'))
         
@@ -790,8 +827,8 @@ def manage_users():
 def update_user_role_api(username):
     """API endpoint to update user role"""
     try:
-        try:
         logic = get_logic()
+        if not logic:
             return jsonify({'error': 'Database connection failed'}), 500
             
         data = request.json
@@ -818,8 +855,8 @@ def update_user_role_api(username):
 def toggle_user_status_api(username):
     """API endpoint to toggle user active status"""
     try:
-        try:
         logic = get_logic()
+        if not logic:
             return jsonify({'error': 'Database connection failed'}), 500
             
         # Prevent admin from deactivating themselves
@@ -840,8 +877,8 @@ def toggle_user_status_api(username):
 def delete_user_api(username):
     """API endpoint to delete a user"""
     try:
-        try:
         logic = get_logic()
+        if not logic:
             return jsonify({'error': 'Database connection failed'}), 500
             
         # Prevent admin from deleting themselves

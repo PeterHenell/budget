@@ -15,11 +15,6 @@ class BudgetLogic:
         """Close the database connection"""
         self.db.close()
 
-    @property
-    def conn(self):
-        """Compatibility property for tests - provides access to database connection"""
-        return self.db.conn
-
     # === Category Management ===
     
     def get_categories(self):
@@ -88,11 +83,13 @@ class BudgetLogic:
         """Reclassify a transaction by transaction ID (direct database operation)"""
         return self.db.classify_transaction(transaction_id, category_name, confidence, classification_method)
 
+    def get_classified_transactions_for_patterns(self):
+        """Get classified transactions for building classification patterns"""
+        return self.db.get_classified_transactions_for_patterns()
+
     def get_unclassified_transactions(self):
         """Get transactions that have no category assigned (category_id IS NULL)"""
-        c = self.db.conn.cursor()
-        c.execute("SELECT verifikationsnummer, date, description, amount FROM transactions WHERE category_id IS NULL")
-        return c.fetchall()
+        return self.db.get_unclassified_transactions()
 
     # === Transaction Delete Functionality ===
 
@@ -107,27 +104,55 @@ class BudgetLogic:
     # === CSV Import Functionality ===
 
     def import_csv(self, csv_path, csv_encoding='utf-8'):
-        """Import transactions from CSV file"""
+        """Import transactions from CSV file with automatic classification"""
+        try:
+            # Step 1: Read and parse CSV file
+            df = self._read_csv_with_fallback(csv_path, csv_encoding)
+            
+            # Step 2: Standardize column names
+            df = self._standardize_csv_columns(df)
+            
+            # Step 3: Validate required columns
+            self._validate_csv_columns(df)
+            
+            # Step 4: Clean and process data
+            df = self._clean_csv_data(df)
+            
+            # Step 5: Import to database
+            self.db.import_transactions_bulk(df, "Uncategorized")
+            
+            # Step 6: Auto-classify imported transactions
+            self._auto_classify_new_transactions(df)
+            
+            self.logger.info(f"Successfully imported {len(df)} transactions from {csv_path}")
+            return len(df)
+            
+        except Exception as e:
+            self.logger.error(f"Failed to import CSV file {csv_path}: {e}")
+            raise
+
+    def _read_csv_with_fallback(self, csv_path, csv_encoding):
+        """Read CSV file with fallback for different separators and encodings"""
         df = None
+        separators = [';', ',']
+        encodings = [csv_encoding, 'latin-1']
         
-        # Try different separator and encoding combinations
-        for separator in [';', ',']:
-            for encoding in [csv_encoding, 'latin-1']:
+        for separator in separators:
+            for encoding in encodings:
                 try:
                     df_test = pd.read_csv(csv_path, sep=separator, encoding=encoding)
                     # Check if we got proper columns (more than 1 column suggests correct separator)
                     if len(df_test.columns) > 1:
-                        df = df_test
-                        break
-                except (UnicodeDecodeError, Exception):
+                        self.logger.debug(f"Successfully read CSV with separator='{separator}', encoding='{encoding}'")
+                        return df_test
+                except (UnicodeDecodeError, Exception) as e:
+                    self.logger.debug(f"Failed to read CSV with separator='{separator}', encoding='{encoding}': {e}")
                     continue
-            if df is not None:
-                break
         
-        if df is None:
-            raise Exception("Could not read CSV file with any separator/encoding combination")
+        raise Exception("Could not read CSV file with any separator/encoding combination")
 
-        # Convert to consistent column names
+    def _standardize_csv_columns(self, df):
+        """Standardize CSV column names to consistent format"""
         column_mapping = {
             'Datum': 'Datum',
             'Date': 'Datum',
@@ -145,72 +170,131 @@ class BudgetLogic:
         for old_name, new_name in column_mapping.items():
             if old_name in df.columns:
                 df = df.rename(columns={old_name: new_name})
+        
+        self.logger.debug(f"Standardized columns: {list(df.columns)}")
+        return df
 
-        # Check required columns exist
+    def _validate_csv_columns(self, df):
+        """Validate that required columns exist in the CSV"""
         required_columns = ['Datum', 'Beskrivning', 'Belopp']
         missing_columns = [col for col in required_columns if col not in df.columns]
-        if missing_columns:
-            raise ValueError(f"Missing required columns: {missing_columns}")
-
-        # Clean and process data
-        df['Datum'] = pd.to_datetime(df['Datum'], errors='coerce')
-        df = df.dropna(subset=['Datum'])
-        df['Datum'] = df['Datum'].dt.strftime('%Y-%m-%d')
         
+        if missing_columns:
+            raise ValueError(f"Missing required columns: {missing_columns}. Available columns: {list(df.columns)}")
+        
+        self.logger.debug(f"CSV validation passed - all required columns present")
+
+    def _clean_csv_data(self, df):
+        """Clean and process CSV data for database import"""
+        original_count = len(df)
+        
+        # Clean date column
+        df = self._clean_date_column(df)
+        
+        # Clean amount column
+        df = self._clean_amount_column(df)
+        
+        # Add derived columns
+        df = self._add_derived_columns(df)
+        
+        cleaned_count = len(df)
+        if cleaned_count < original_count:
+            self.logger.warning(f"Cleaned data: {original_count} -> {cleaned_count} rows ({original_count - cleaned_count} rows removed)")
+        
+        return df
+
+    def _clean_date_column(self, df):
+        """Clean and validate the date column, removing invalid dates"""
+        try:
+            # Create a copy to avoid SettingWithCopyWarning
+            df = df.copy()
+            
+            # Convert to datetime, coercing invalid dates to NaT (Not a Time)
+            df['Datum'] = pd.to_datetime(df['Datum'], errors='coerce')
+            
+            # Remove rows with invalid dates (NaT values)
+            df = df.dropna(subset=['Datum'])
+            
+            # Convert back to string format for database storage
+            df['Datum'] = df['Datum'].dt.strftime('%Y-%m-%d')
+            
+            return df
+        except Exception as e:
+            raise ValueError(f"Error cleaning date column: {str(e)}")
+    
+    def _clean_amount_column(self, df):
+        """Clean and standardize amount column"""
         # Convert amount to float, handling different formats
         if df['Belopp'].dtype == 'object':
+            # Handle European number format (comma as decimal separator)
             df['Belopp'] = df['Belopp'].str.replace(',', '.').str.replace(' ', '')
             df['Belopp'] = pd.to_numeric(df['Belopp'], errors='coerce')
         
+        # Remove rows with invalid amounts
+        invalid_amounts = df['Belopp'].isna().sum()
+        if invalid_amounts > 0:
+            self.logger.warning(f"Removing {invalid_amounts} rows with invalid amounts")
+            
         df = df.dropna(subset=['Belopp'])
         
-        # Add year and month columns
+        return df
+
+    def _add_derived_columns(self, df):
+        """Add derived columns for year and month"""
         df['year'] = pd.to_datetime(df['Datum']).dt.year
         df['month'] = pd.to_datetime(df['Datum']).dt.month
         
-        # Import to database
-        self.db.import_transactions_bulk(df, "Uncategorized")
-        
-        # Auto-classify imported transactions using LLM-supported classification
-        self._auto_classify_new_transactions(df)
-        
-        return len(df)
+        return df
     
     def _auto_classify_new_transactions(self, df):
         """Automatically classify newly imported transactions using LLM-supported classification"""
         
         # Check if auto-classification is enabled
-        auto_classify_enabled = os.getenv('AUTO_CLASSIFY_ON_IMPORT', 'true').lower() == 'true'
-        if not auto_classify_enabled:
-            self.logger.info("Automatic classification disabled by configuration")
+        if not self._is_auto_classification_enabled():
             return
             
         try:
-            # Import here to avoid circular imports
-            from classifiers import AutoClassificationEngine
+            # Get classification parameters
+            engine = self._initialize_classification_engine()
+            confidence_threshold = self._get_confidence_threshold()
             
-            # Initialize the auto-classification engine (includes LLM classifiers)
-            engine = AutoClassificationEngine(self)
-            
-            # Get confidence threshold from environment
-            confidence_threshold = float(os.getenv('AUTO_CLASSIFY_CONFIDENCE_THRESHOLD', '0.75'))
-            
-            # Auto-classify imported transactions
+            # Perform auto-classification
             classified_count, suggestions = engine.auto_classify_uncategorized(
                 confidence_threshold=confidence_threshold,
                 max_suggestions=len(df) * 2  # Allow processing all imported transactions
             )
             
-            if classified_count > 0:
-                self.logger.info(f"Auto-classified {classified_count} transactions using LLM-supported classification")
-            
-            # Log suggestions for review if any
-            if suggestions:
-                self.logger.info(f"{len(suggestions)} transactions have moderate confidence suggestions for manual review")
+            # Log results
+            self._log_classification_results(classified_count, suggestions)
                 
         except Exception as e:
             self.logger.warning(f"Auto-classification failed: {e}")
             # Don't fail the import if auto-classification fails
+
+    def _is_auto_classification_enabled(self):
+        """Check if automatic classification is enabled via configuration"""
+        auto_classify_enabled = os.getenv('AUTO_CLASSIFY_ON_IMPORT', 'true').lower() == 'true'
+        if not auto_classify_enabled:
+            self.logger.info("Automatic classification disabled by configuration")
+        return auto_classify_enabled
+
+    def _initialize_classification_engine(self):
+        """Initialize the auto-classification engine"""
+        # Import here to avoid circular imports
+        from classifiers import AutoClassificationEngine
+        return AutoClassificationEngine(self)
+
+    def _get_confidence_threshold(self):
+        """Get confidence threshold from environment configuration"""
+        return float(os.getenv('AUTO_CLASSIFY_CONFIDENCE_THRESHOLD', '0.75'))
+
+    def _log_classification_results(self, classified_count, suggestions):
+        """Log the results of auto-classification"""
+        if classified_count > 0:
+            self.logger.info(f"Auto-classified {classified_count} transactions using LLM-supported classification")
+        
+        if suggestions:
+            self.logger.info(f"{len(suggestions)} transactions have moderate confidence suggestions for manual review")
 
     # === Reporting Functionality ===
     
