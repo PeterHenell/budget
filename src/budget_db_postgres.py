@@ -12,11 +12,12 @@ from typing import List, Dict, Optional, Tuple
 class BudgetDb:
     """Database abstraction layer for PostgreSQL operations"""
     
-    def __init__(self, connection_params: dict = None):
+    def __init__(self, connection_params: dict = None, auto_init: bool = True):
         """
         Initialize database connection
         connection_params: dict with keys: host, database, user, password, port
         If None, reads from environment variables
+        auto_init: If True, check and initialize database if needed
         """
         if connection_params is None:
             connection_params = {
@@ -30,7 +31,10 @@ class BudgetDb:
         self.connection_params = connection_params
         self.conn = None
         self._connect_db()
-        self._init_db()
+        
+        # Optional database initialization check
+        if auto_init:
+            self._check_and_init_db()
 
     def _connect_db(self):
         """Connect to PostgreSQL database"""
@@ -42,115 +46,27 @@ class BudgetDb:
         except psycopg2.Error as e:
             raise Exception(f"Failed to connect to PostgreSQL database: {e}")
 
-    def _init_db(self):
-        """Initialize database schema"""
+    def _check_and_init_db(self):
+        """Check if database is initialized, warn if not"""
         try:
             c = self.conn.cursor()
             
-            # Create categories table
+            # Check if basic tables exist
             c.execute("""
-                CREATE TABLE IF NOT EXISTS categories (
-                    id SERIAL PRIMARY KEY,
-                    name VARCHAR(255) UNIQUE NOT NULL
-                )
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_name = 'categories'
+                );
             """)
+            tables_exist = c.fetchone()[0]
             
-            # Create budgets table
-            c.execute("""
-                CREATE TABLE IF NOT EXISTS budgets (
-                    id SERIAL PRIMARY KEY,
-                    category_id INTEGER REFERENCES categories(id),
-                    year INTEGER NOT NULL,
-                    amount DECIMAL(10,2) NOT NULL,
-                    UNIQUE(category_id, year)
-                )
-            """)
-            
-            # Create transactions table
-            c.execute("""
-                CREATE TABLE IF NOT EXISTS transactions (
-                    id SERIAL PRIMARY KEY,
-                    verifikationsnummer VARCHAR(100),
-                    date DATE NOT NULL,
-                    description TEXT NOT NULL,
-                    amount DECIMAL(10,2) NOT NULL,
-                    category_id INTEGER REFERENCES categories(id),
-                    year INTEGER NOT NULL,
-                    month INTEGER NOT NULL
-                )
-            """)
-            
-            # Create users table for authentication
-            c.execute("""
-                CREATE TABLE IF NOT EXISTS users (
-                    id SERIAL PRIMARY KEY,
-                    username VARCHAR(255) UNIQUE NOT NULL,
-                    password_hash TEXT NOT NULL,
-                    role VARCHAR(50) DEFAULT 'user',
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    is_active BOOLEAN DEFAULT TRUE
-                )
-            """)
-            
-            # Commit the table creation first
-            self.conn.commit()
-            
-            # Add role column to existing users table if it doesn't exist
-            try:
-                c.execute("ALTER TABLE users ADD COLUMN role VARCHAR(50) DEFAULT 'user'")
-                self.conn.commit()
-            except psycopg2.Error:
-                # Column already exists or other error, rollback and continue
-                self.conn.rollback()
-            
-            # Create indexes for performance
-            c.execute("CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date)")
-            c.execute("CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category_id)")
-            c.execute("CREATE INDEX IF NOT EXISTS idx_transactions_year_month ON transactions(year, month)")
-            c.execute("CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)")
-            
-            self.conn.commit()
-            
-            # Insert default categories if not present
-            default_categories = [
-                "Mat", "Boende", "Transport", "Nöje", "Hälsa", "Övrigt", "Uncategorized"
-            ]
-            for cat in default_categories:
-                try:
-                    c.execute("INSERT INTO categories (name) VALUES (%s)", (cat,))
-                except psycopg2.IntegrityError:
-                    # Category already exists, rollback and continue
-                    self.conn.rollback()
-                    continue
-                else:
-                    self.conn.commit()
-                    
-            # Create default admin user if not present
-            try:
-                import bcrypt
-                admin_password = "admin"
-                password_hash = bcrypt.hashpw(admin_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+            if not tables_exist:
+                print("⚠️  Database tables not found!")
+                print("   Please run: python src/init_database.py")
+                print("   Or use: from src.init_database import DatabaseInitializer")
                 
-                # Check if admin user exists
-                c.execute("SELECT COUNT(*) FROM users WHERE username = %s", ("admin",))
-                if c.fetchone()[0] == 0:
-                    # Create admin user with admin role
-                    c.execute("INSERT INTO users (username, password_hash, role) VALUES (%s, %s, %s)", 
-                             ("admin", password_hash, "admin"))
-                    self.conn.commit()
-                    print("Created admin user (username: admin, password: admin)")
-                else:
-                    # Update existing admin user to have admin role
-                    c.execute("UPDATE users SET role = %s WHERE username = %s", ("admin", "admin"))
-                    self.conn.commit()
-                    
-            except ImportError:
-                # bcrypt not available, skip admin user creation
-                print("Warning: bcrypt not available, skipping admin user creation")
-                    
         except psycopg2.Error as e:
-            self.conn.rollback()
-            raise Exception(f"Failed to initialize database schema: {e}")
+            print(f"Warning: Could not check database initialization: {e}")
 
     def close(self):
         """Close the database connection"""

@@ -1,9 +1,15 @@
 import unittest
 import tempfile
 import os
-from logic import BudgetLogic
+import sys
+from pathlib import Path
 import psycopg2
 import time
+
+# Add src directory to path so we can import our modules
+sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
+
+from logic import BudgetLogic
 
 class TestBudgetLogic(unittest.TestCase):
     @classmethod
@@ -13,9 +19,9 @@ class TestBudgetLogic(unittest.TestCase):
         cls.test_connection_params = {
             'host': os.getenv('POSTGRES_HOST', 'localhost'),
             'database': os.getenv('POSTGRES_TEST_DB', 'budget_test_db'),
-            'user': os.getenv('POSTGRES_USER', 'budget_user'),
-            'password': os.getenv('POSTGRES_PASSWORD', 'budget_password'),
-            'port': os.getenv('POSTGRES_PORT', '5432')
+            'user': os.getenv('POSTGRES_USER', 'budget_test_user'),
+            'password': os.getenv('POSTGRES_PASSWORD', 'budget_test_password'),
+            'port': os.getenv('POSTGRES_PORT', '5433')
         }
         
         # Create test database if it doesn't exist

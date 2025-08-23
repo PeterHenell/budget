@@ -111,6 +111,50 @@ python web_app.py
 
 Access the application at http://localhost:5000
 
+## 🗄️ Database Initialization
+
+**Important:** Database initialization is now handled by a separate script for better separation of concerns.
+
+### Quick Initialization
+
+```bash
+# From project root (after setting up database connection)
+python init_db.py
+```
+
+### Advanced Initialization
+
+```bash
+# Full control initialization
+python src/init_database.py
+
+# Skip admin user creation
+python src/init_database.py --skip-admin
+
+# Custom connection parameters
+python src/init_database.py --host myhost --database mydb --user myuser
+```
+
+### What Gets Created
+
+- **Database Tables**: categories, budgets, transactions, users
+- **Indexes**: Optimized for query performance  
+- **Default Categories**: Mat, Boende, Transport, Nöje, Hälsa, Övrigt, Uncategorized
+- **Admin User**: username=`admin`, password=`admin` (⚠️ Change immediately!)
+- **Triggers**: Automatic timestamp updates
+
+### Docker Initialization
+
+```bash
+# Start development environment
+docker-compose -f docker-compose.dev.yml up -d --build
+
+# Initialize database (first time only)
+docker exec -it budget_web_dev python init_database.py
+```
+
+For detailed initialization documentation, see [DATABASE_INIT.md](DATABASE_INIT.md).
+
 ## 🧪 Testing
 
 ### With Docker (Recommended)

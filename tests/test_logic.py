@@ -1,24 +1,85 @@
 import unittest
 import tempfile
 import os
+import sys
+from pathlib import Path
+import psycopg2
+import time
+
+# Add src directory to path so we can import our modules
+sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
+
 from logic import BudgetLogic
 
 class TestBudgetLogic(unittest.TestCase):
-    def setUp(self):
-        # Create a temp file but remove it so BudgetLogic creates a new DB
-        self.temp_db = tempfile.NamedTemporaryFile(delete=True, suffix='.db')
-        self.temp_db_path = self.temp_db.name
-        self.temp_db.close()  # This deletes the file since delete=True
+    """Test BudgetLogic with PostgreSQL backend"""
+    
+    @classmethod
+    def setUpClass(cls):
+        """Set up test database connection"""
+        # Use test database configuration
+        cls.test_connection_params = {
+            'host': os.getenv('POSTGRES_HOST', 'localhost'),
+            'database': os.getenv('POSTGRES_TEST_DB', 'budget_test_db'),
+            'user': os.getenv('POSTGRES_USER', 'budget_test_user'),
+            'password': os.getenv('POSTGRES_PASSWORD', 'budget_test_password'),
+            'port': os.getenv('POSTGRES_PORT', '5433')  # Test database port
+        }
         
-        self.logic = BudgetLogic(self.temp_db_path, 'testpass')
+        # Wait for database to be ready
+        max_attempts = 30
+        for attempt in range(max_attempts):
+            try:
+                test_conn = psycopg2.connect(**cls.test_connection_params)
+                test_conn.close()
+                break
+            except psycopg2.Error:
+                if attempt == max_attempts - 1:
+                    raise
+                print(f"Waiting for test database... (attempt {attempt + 1})")
+                time.sleep(1)
+        
+    def setUp(self):
+        """Set up test data"""
+        self.logic = BudgetLogic(self.test_connection_params)
+        
+        # Clean up any existing test data
+        try:
+            self.logic.remove_category('TestCat')
+            self.logic.remove_category('TestCat2')
+            self.logic.remove_category('TestCat3')
+            self.logic.remove_category('TestCat4')
+        except:
+            pass
+        
+        # Clean up any test transactions (simple approach - remove by verifikationsnummer patterns)
+        try:
+            cursor = self.logic.conn.cursor()
+            cursor.execute("DELETE FROM transactions WHERE verifikationsnummer LIKE 'TEST%' OR verifikationsnummer LIKE 'T%' OR verifikationsnummer LIKE 'U%' OR verifikationsnummer LIKE 'Y%'")
+            self.logic.conn.commit()
+        except:
+            pass
+            
         # Add a test category and set yearly budget
         self.logic.add_category('TestCat')
         self.logic.set_budget('TestCat', 2025, 12000)  # Yearly budget
     
     def tearDown(self):
+        """Clean up test data"""
+        try:
+            # Clean up test transactions
+            cursor = self.logic.conn.cursor()
+            cursor.execute("DELETE FROM transactions WHERE verifikationsnummer LIKE 'TEST%' OR verifikationsnummer LIKE 'T%' OR verifikationsnummer LIKE 'U%' OR verifikationsnummer LIKE 'Y%'")
+            self.logic.conn.commit()
+            
+            # Clean up test categories
+            self.logic.remove_category('TestCat')
+            self.logic.remove_category('TestCat2')
+            self.logic.remove_category('TestCat3')
+            self.logic.remove_category('TestCat4')
+        except:
+            pass
         self.logic.close()
-        if os.path.exists(self.temp_db_path):
-            os.remove(self.temp_db_path)
 
     def test_db_connection(self):
         self.assertIsNotNone(self.logic.conn)

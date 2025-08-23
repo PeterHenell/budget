@@ -1,48 +1,163 @@
-# Testing Guide
+# Test Guide for Budget App
 
-This document explains how to run the comprehensive test suite for the Budget App.
+This document describes the test structure and how to run tests for the Budget App.
 
-## Test Types
+## 📁 Test Organization
 
-### 🔬 Integration Tests
-- **Purpose**: Test the complete application stack with real database
-- **Database**: Separate test database (`budget_test_db` on port 5433)
-- **Coverage**: Authentication, all pages, API endpoints, data operations
-- **Location**: `tests/test_integration.py`
+All tests have been moved to the `tests/` directory for better organization:
 
-### 🧪 Unit Tests  
-- **Purpose**: Test individual components and logic
-- **Database**: Local or mocked
-- **Coverage**: Business logic, database operations
-- **Location**: `src/test_logic.py`, `tests/test_import_cli.py`
-
-## Running Tests
-
-### Integration Tests (Recommended)
-```bash
-# Run comprehensive integration tests
-make test-integration
-
-# Or run directly
-./run_integration_tests.sh
+```
+tests/
+├── __init__.py              # Makes tests directory a Python package
+├── conftest.py              # Pytest configuration and fixtures
+├── test_db_connection.py    # Database connection verification
+├── test_import_cli.py       # CSV import CLI functionality tests  
+├── test_integration.py      # Full integration tests with Docker
+├── test_integration_simple.py # Simple integration tests
+├── test_logic.py            # Business logic unit tests
+└── test_logic_postgres.py  # PostgreSQL-specific logic tests
 ```
 
-This will:
-1. Start separate test containers (PostgreSQL + Web App)
-2. Run all integration tests
-3. Generate HTML report (`test-report.html`)
-4. Clean up test containers automatically
+## 🚀 Running Tests
+
+### Quick Test Check
+
+Use the test runner for a quick overview:
+```bash
+python test_runner.py
+```
+
+### Docker-based Testing (Recommended)
+
+1. **Start test environment:**
+   ```bash
+   docker-compose -f docker-compose.test.yml up -d
+   ```
+
+2. **Run tests inside container:**
+   ```bash
+   docker exec -it budget_web_test bash -c "
+   export POSTGRES_HOST=postgres-test
+   export POSTGRES_USER=budget_test_user  
+   export POSTGRES_PASSWORD=budget_test_password
+   export POSTGRES_PORT=5432
+   cd /app && python -m pytest tests/ -v
+   "
+   ```
+
+3. **Clean up:**
+   ```bash
+   docker-compose -f docker-compose.test.yml down -v
+   ```
+
+### Local Testing
+
+For local testing, ensure PostgreSQL is running and environment variables are set:
+
+```bash
+# Set test database variables
+export POSTGRES_HOST=localhost
+export POSTGRES_DB=budget_test_db  
+export POSTGRES_USER=budget_test_user
+export POSTGRES_PASSWORD=budget_test_password
+export POSTGRES_PORT=5433
+
+# Run tests
+python -m pytest tests/ -v
+```
+
+## 🧪 Test Types
 
 ### Unit Tests
-```bash
-# Run unit tests
-make test-unit
+- **`test_logic.py`** - Business logic unit tests
+- **`test_logic_postgres.py`** - PostgreSQL-specific tests
+- **`test_import_cli.py`** - CSV import functionality
 
-# Or run specific tests
-make install-dev  # Install dev environment first
-source venv/bin/activate
-cd src && python -m pytest test_logic.py -v
+### Integration Tests  
+- **`test_integration.py`** - Full integration tests with web server
+- **`test_integration_simple.py`** - Simple web app structure tests
+- **`test_db_connection.py`** - Database connectivity verification
+
+## 📋 Test Categories
+
+### ✅ Working Tests
+- Database connection tests
+- Basic business logic tests  
+- Module import tests
+- Test organization verification
+
+### ⚠️ Tests Needing Updates
+- Some PostgreSQL-specific tests need better test isolation
+- Integration tests may need Docker setup modifications
+- Legacy SQLite-based tests need PostgreSQL migration
+
+## 🛠️ Test Configuration
+
+### Environment Variables
+Tests use these environment variables (see `conftest.py`):
+
+```bash
+POSTGRES_HOST=localhost          # Database host
+POSTGRES_DB=budget_test_db       # Test database name  
+POSTGRES_USER=budget_test_user   # Database user
+POSTGRES_PASSWORD=budget_test_password # Database password
+POSTGRES_PORT=5433               # Test database port
 ```
+
+### Test Database Setup
+
+The test database should be separate from the main application database:
+
+1. **Using Docker:** `docker-compose.test.yml` provides isolated test database
+2. **Manual Setup:** Create dedicated test database with test user credentials
+
+## 🔧 Pytest Configuration
+
+The `conftest.py` file provides:
+- Automatic `src/` directory inclusion in Python path
+- Environment variable configuration
+- Common test fixtures (can be extended)
+
+## 📊 Running Specific Tests
+
+```bash
+# Run all unit tests
+python -m pytest tests/test_logic.py -v
+
+# Run specific test
+python -m pytest tests/test_logic.py::TestBudgetLogic::test_db_connection -v
+
+# Run with coverage
+python -m pytest tests/ --cov=src --cov-report=html
+
+# Run integration tests only
+python -m pytest tests/test_integration* -v
+```
+
+## 🚫 Troubleshooting
+
+### Database Connection Issues
+- Ensure PostgreSQL test database is running
+- Check environment variables match database configuration  
+- Verify test database credentials and permissions
+
+### Import Errors
+- Tests automatically add `src/` to Python path via `conftest.py`
+- Ensure all dependencies are installed (`pip install -r src/requirements.txt`)
+
+### Test Isolation Issues
+- Some tests may need better cleanup between runs
+- Consider using test-specific database schemas or transactions
+
+## 🎯 Future Improvements
+
+1. **Better Test Isolation:** Implement transaction rollback between tests
+2. **Mock Objects:** Add mocking for external dependencies
+3. **Performance Tests:** Add load testing for critical functionality  
+4. **CI/CD Integration:** Set up automated testing pipeline
+5. **Code Coverage:** Improve test coverage reporting
+
+This test structure provides a solid foundation for maintaining and expanding the Budget App's test suite! 🧪✨
 
 ## Test Database
 
