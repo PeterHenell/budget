@@ -6,9 +6,7 @@ services:
       POSTGRES_DB: budget_db
       POSTGRES_USER: budget_user
       POSTGRES_PASSWORD: budget_password_2025
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    volumes: []
     ports:
       - "5432:5432"
     networks:
@@ -19,8 +17,35 @@ services:
       timeout: 5s
       retries: 5
 
+  ollama:
+    image: ollama/ollama:latest
+    container_name: budget_ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ./ollama-init.sh:/ollama-init.sh
+    networks:
+      - budget_network
+    environment:
+      - OLLAMA_KEEP_ALIVE=30m
+      - OLLAMA_HOST=0.0.0.0
+      - OLLAMA_NUM_PARALLEL=4
+      - OLLAMA_MAX_LOADED_MODELS=1
+      - OLLAMA_FLASH_ATTENTION=1
+      - OLLAMA_NUM_THREAD=4
+      - OLLAMA_NUM_GPU=0
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
   web:
-    build: .
+    build: 
+      context: .
+      dockerfile: Dockerfile.dev
     container_name: budget_web
     environment:
       POSTGRES_HOST: postgres
@@ -30,24 +55,49 @@ services:
       POSTGRES_PORT: 5432
       FLASK_SECRET_KEY: docker-secret-key-budget-app-2025
       FLASK_ENV: development
+      # LLM Configuration
+      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_MODEL: tinyllama:1.1b
+      LLM_ENABLED: "true"
+      LLM_CONFIDENCE_THRESHOLD: "0.6"
     ports:
       - "5000:5000"
     volumes:
+      - ./src:/app
       - ./src/uploads:/app/uploads
+    command: ["python", "web_app.py"]
     depends_on:
       postgres:
+        condition: service_healthy
+      ollama:
         condition: service_healthy
     networks:
       - budget_network
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:5000/ || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:5000/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 60s
     restart: unless-stopped
 
-volumes:
-  postgres_data:
+  # Model initialization service - runs once to download the model
+  ollama-init:
+    image: ollama/ollama:latest
+    container_name: budget_ollama_init
+    depends_on:
+      ollama:
+        condition: service_healthy
+    networks:
+      - budget_network
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    volumes:
+      - ./ollama-init.sh:/ollama-init.sh
+    entrypoint: ["/bin/sh", "/ollama-init.sh"]
+    restart: "no"  # Only run once
+    profiles:
+      - init  # Only run when specifically requested
 
 networks:
   budget_network:
