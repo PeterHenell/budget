@@ -189,8 +189,9 @@ class BudgetDb:
     # === Transaction Operations ===
     
     def add_transaction(self, date: str, description: str, amount: float, 
-                       category_name: str, verifikationsnummer: str = None):
-        """Add a new transaction"""
+                       category_name: str, verifikationsnummer: str = None,
+                       confidence: float = None, method: str = None):
+        """Add a new transaction with optional confidence tracking"""
         c = self.conn.cursor()
         try:
             # Get category ID, create if it doesn't exist
@@ -204,9 +205,10 @@ class BudgetDb:
             month = int(date.split('-')[1])
             
             c.execute("""
-                INSERT INTO transactions (verifikationsnummer, date, description, amount, category_id, year, month)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """, (verifikationsnummer, date, description, amount, cat_id, year, month))
+                INSERT INTO transactions (verifikationsnummer, date, description, amount, category_id, year, month,
+                                        classification_confidence, classification_method)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (verifikationsnummer, date, description, amount, cat_id, year, month, confidence, method))
             self.conn.commit()
         except psycopg2.Error as e:
             self.conn.rollback()
@@ -219,7 +221,9 @@ class BudgetDb:
         
         query = """
             SELECT t.id, t.verifikationsnummer, t.date, t.description, t.amount, 
-                   c.name as category, t.year, t.month
+                   c.name as category, t.year, t.month,
+                   t.classification_confidence, t.classification_method,
+                   t.created_at, t.updated_at
             FROM transactions t
             LEFT JOIN categories c ON t.category_id = c.id
         """
@@ -270,8 +274,9 @@ class BudgetDb:
         c.execute(query, params)
         return c.fetchall()
 
-    def classify_transaction(self, transaction_id: int, category_name: str):
-        """Classify a transaction to a specific category"""
+    def classify_transaction(self, transaction_id: int, category_name: str, 
+                           confidence: float = None, method: str = "Manual"):
+        """Classify a transaction to a specific category with confidence tracking"""
         c = self.conn.cursor()
         try:
             cat_id = self.get_category_id(category_name)
@@ -282,7 +287,16 @@ class BudgetDb:
                 if not cat_id:
                     raise ValueError(f"Failed to create category: {category_name}")
             
-            c.execute("UPDATE transactions SET category_id = %s WHERE id = %s", (cat_id, transaction_id))
+            # Update transaction with category and confidence info
+            c.execute("""
+                UPDATE transactions 
+                SET category_id = %s, 
+                    classification_confidence = %s,
+                    classification_method = %s,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s
+            """, (cat_id, confidence, method, transaction_id))
+            
             if c.rowcount == 0:
                 raise ValueError(f"Transaction with ID {transaction_id} not found")
             self.conn.commit()

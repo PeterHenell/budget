@@ -575,7 +575,12 @@ def api_classify():
         if not transaction_id or not category:
             return jsonify({'error': 'Missing transaction_id or category'}), 400
         
-        success = logic.reclassify_transaction(transaction_id, category)
+        success = logic.reclassify_transaction(
+            transaction_id, 
+            category, 
+            confidence=1.0, 
+            classification_method='manual'
+        )
         return jsonify({'success': success})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -596,7 +601,12 @@ def api_classify_batch():
             transaction_id = transaction.get('transaction_id')
             category = transaction.get('category')
             if transaction_id and category:
-                if logic.categorize_transaction(transaction_id, category):
+                if logic.reclassify_transaction(
+                    transaction_id, 
+                    category, 
+                    confidence=1.0, 
+                    classification_method='manual'
+                ):
                     success_count += 1
         
         return jsonify({
@@ -796,6 +806,48 @@ def delete_user_api(username):
             
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@app.route('/health')
+def health_check():
+    """Health check endpoint for Docker containers"""
+    try:
+        # Check database connectivity
+        if logic:
+            categories = logic.get_categories()
+            db_status = "ok" if categories else "error"
+        else:
+            db_status = "no_connection"
+        
+        # Check LLM classifier status if available
+        llm_status = "disabled"
+        try:
+            from docker_llm_classifier import DockerLLMClassifier
+            llm_classifier = DockerLLMClassifier(logic) if logic else None
+            if llm_classifier:
+                llm_status_info = llm_classifier.get_status()
+                llm_status = "available" if llm_status_info['available'] else "unavailable"
+        except ImportError:
+            llm_status = "not_installed"
+        except Exception as e:
+            llm_status = f"error: {str(e)}"
+        
+        status = {
+            'status': 'healthy' if db_status == 'ok' else 'unhealthy',
+            'timestamp': datetime.now().isoformat(),
+            'services': {
+                'database': db_status,
+                'llm_classifier': llm_status
+            }
+        }
+        
+        return jsonify(status), 200 if status['status'] == 'healthy' else 503
+        
+    except Exception as e:
+        return jsonify({
+            'status': 'unhealthy',
+            'error': str(e),
+            'timestamp': datetime.now().isoformat()
+        }), 503
 
 if __name__ == '__main__':
     port = int(os.getenv('FLASK_PORT', 5000))

@@ -1,6 +1,6 @@
 # Budget App - PostgreSQL Version
 
-A modern web-based personal budget management application with PostgreSQL backend and Docker support.
+A modern web-based personal budget management application with PostgreSQL backend, Docker support, and optional **Local LLM Integration** for AI-powered transaction classification.
 
 ## 🚀 Quick Start with Docker
 
@@ -16,13 +16,26 @@ docker-compose up -d
 open http://localhost:5000
 ```
 
-This will start both PostgreSQL database and the web application in containers.
+### 🤖 Quick Start with AI Classification
+
+For enhanced automatic transaction classification using local LLM:
+
+```bash
+# Start with local AI support (first run downloads ~2GB model)
+make llm-up
+
+# Access the AI-enhanced application
+open http://localhost:5001
+```
+
+See [LLM_INTEGRATION.md](LLM_INTEGRATION.md) for detailed AI setup guide.
 
 ## 📋 Prerequisites
 
 ### For Docker Setup (Recommended)
 - Docker and Docker Compose installed
 - Port 5000 (web) and 5432 (database) available
+- For LLM: Additional 4GB RAM and 3GB storage
 
 ### For Local Development
 - Python 3.11+

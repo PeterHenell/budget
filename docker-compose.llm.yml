@@ -1,0 +1,112 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: budget_postgres_llm
+    environment:
+      POSTGRES_DB: budget_db
+      POSTGRES_USER: budget_user
+      POSTGRES_PASSWORD: budget_password_2025
+    volumes:
+      - postgres_data_llm:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5433:5432"  # Different port to avoid conflicts
+    networks:
+      - budget_llm_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U budget_user -d budget_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: budget_ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+      - ./ollama-models:/root/.ollama/models  # Optional: for persistent models
+    networks:
+      - budget_llm_network
+    environment:
+      # Optimize for smaller models and CPU usage
+      - OLLAMA_KEEP_ALIVE=30m         # Keep model loaded longer
+      - OLLAMA_HOST=0.0.0.0
+      - OLLAMA_NUM_PARALLEL=4         # More parallel processing
+      - OLLAMA_MAX_LOADED_MODELS=1
+      # Performance optimizations
+      - OLLAMA_FLASH_ATTENTION=1      # Enable flash attention if supported
+      - OLLAMA_NUM_THREAD=4           # Use more CPU threads
+      - OLLAMA_NUM_GPU=0              # Force CPU (consistent performance)
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  web:
+    build: 
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: budget_web_llm
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: budget_db
+      POSTGRES_USER: budget_user
+      POSTGRES_PASSWORD: budget_password_2025
+      POSTGRES_PORT: 5432
+      FLASK_SECRET_KEY: llm-docker-secret-key-budget-app-2025
+      FLASK_ENV: development
+      FLASK_DEBUG: 1
+      # LLM Configuration
+      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_MODEL: tinyllama:1.1b
+      LLM_ENABLED: "true"
+      LLM_CONFIDENCE_THRESHOLD: "0.6"
+    ports:
+      - "5001:5000"  # Different port to avoid conflicts
+    volumes:
+      - ./src:/app
+      - ./src/uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+    networks:
+      - budget_llm_network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # Model initialization service - runs once to download the model
+  ollama-init:
+    image: ollama/ollama:latest
+    container_name: budget_ollama_init
+    depends_on:
+      ollama:
+        condition: service_healthy
+    networks:
+      - budget_llm_network
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    volumes:
+      - ./ollama-init.sh:/ollama-init.sh
+    entrypoint: ["/bin/sh", "/ollama-init.sh"]
+    restart: "no"  # Only run once
+
+volumes:
+  postgres_data_llm:
+  ollama_data:
+
+networks:
+  budget_llm_network:
+    driver: bridge

@@ -91,6 +91,8 @@ class DatabaseInitializer:
                     category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
                     year INTEGER NOT NULL,
                     month INTEGER NOT NULL,
+                    classification_confidence DECIMAL(3,2) DEFAULT NULL,
+                    classification_method VARCHAR(50) DEFAULT NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )

@@ -218,8 +218,8 @@ class LearningClassifier(TransactionClassifier):
             
             # Amount similarity score (if we have amount data)
             if pattern['amount_std'] > 0:
-                amount_diff = abs(amount - pattern['avg_amount'])
-                amount_score = max(0, 1 - (amount_diff / (pattern['amount_std'] * 2)))
+                amount_diff = abs(float(amount) - float(pattern['avg_amount']))
+                amount_score = max(0, 1 - (amount_diff / (float(pattern['amount_std']) * 2)))
                 score += amount_score * 0.3  # 30% weight for amount similarity
             
             # Boost score based on training data volume
@@ -246,6 +246,35 @@ class AutoClassificationEngine:
             RuleBasedClassifier(logic),
             LearningClassifier(logic)
         ]
+        
+        # Try to add LLM classifier if available
+        self._add_llm_classifier()
+    
+    def _add_llm_classifier(self):
+        """Try to add best available LLM classifier"""
+        try:
+            # Try SuperFast classifier first (hybrid rule+LLM)
+            from super_fast_classifier import SuperFastClassifier
+            super_fast = SuperFastClassifier(self.logic)
+            self.classifiers.append(super_fast)
+            print("✅ SuperFast Classifier (Rule+LLM hybrid) added to engine")
+            return
+        except ImportError:
+            pass
+        except Exception as e:
+            print(f"⚠️  SuperFast Classifier failed: {e}")
+        
+        try:
+            # Fallback to Docker LLM classifier
+            from docker_llm_classifier import DockerLLMClassifier
+            llm_classifier = DockerLLMClassifier(self.logic)
+            if llm_classifier.available:
+                self.classifiers.append(llm_classifier)
+                print("✅ Docker LLM Classifier added to auto-classification engine")
+        except ImportError:
+            print("ℹ️  LLM Classifiers not available")
+        except Exception as e:
+            print(f"⚠️  Failed to initialize LLM Classifiers: {e}")
     
     def classify_transaction(self, transaction_data) -> List[Dict]:
         """
@@ -301,7 +330,21 @@ class AutoClassificationEngine:
             if suggestions and suggestions[0]['confidence'] >= confidence_threshold:
                 # Auto-classify with high confidence
                 try:
-                    self.logic.reclassify_transaction(tx_id, suggestions[0]['category'])
+                    # Map classifier name to method name
+                    classifier_to_method = {
+                        'SuperFastClassifier': 'hybrid-ai',
+                        'DockerLLMClassifier': 'llm',
+                        'RuleBasedClassifier': 'rules',
+                        'LearningClassifier': 'learning'
+                    }
+                    method = classifier_to_method.get(suggestions[0].get('classifier'), 'auto')
+                    
+                    self.logic.reclassify_transaction(
+                        tx_id, 
+                        suggestions[0]['category'],
+                        confidence=suggestions[0]['confidence'],
+                        classification_method=method
+                    )
                     classified_count += 1
                 except Exception as e:
                     print(f"Error classifying transaction {tx_id}: {e}")

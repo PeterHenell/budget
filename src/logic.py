@@ -55,9 +55,9 @@ class BudgetLogic:
 
     # === Transaction Management ===
     
-    def add_transaction(self, date, description, amount, category_name, verifikationsnummer=None):
+    def add_transaction(self, date, description, amount, category_name, verifikationsnummer=None, confidence=None, classification_method=None):
         """Add a new transaction"""
-        return self.db.add_transaction(date, description, amount, category_name, verifikationsnummer)
+        return self.db.add_transaction(date, description, amount, category_name, verifikationsnummer, confidence, classification_method)
 
     def get_transactions(self, category=None, year=None, limit=None, offset=None):
         """Get transactions with optional filtering"""
@@ -71,7 +71,7 @@ class BudgetLogic:
         """Get count of uncategorized transactions"""
         return len(self.get_uncategorized_transactions())
 
-    def classify_transaction(self, verifikationsnummer, category_name):
+    def classify_transaction(self, verifikationsnummer, category_name, confidence=None, classification_method=None):
         """Classify a transaction by verification number (for backward compatibility)"""
         # First find the transaction ID by verification number
         transactions = self.db.get_transactions()
@@ -84,11 +84,11 @@ class BudgetLogic:
         if transaction_id is None:
             raise ValueError(f"Transaction with verification number '{verifikationsnummer}' not found")
         
-        return self.db.classify_transaction(transaction_id, category_name)
+        return self.db.classify_transaction(transaction_id, category_name, confidence, classification_method)
 
-    def reclassify_transaction(self, transaction_id, category_name):
+    def reclassify_transaction(self, transaction_id, category_name, confidence=None, classification_method=None):
         """Reclassify a transaction by transaction ID (direct database operation)"""
-        return self.db.classify_transaction(transaction_id, category_name)
+        return self.db.classify_transaction(transaction_id, category_name, confidence, classification_method)
 
     def get_unclassified_transactions(self):
         """Get transactions that have no category assigned (category_id IS NULL)"""

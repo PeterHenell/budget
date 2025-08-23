@@ -164,6 +164,34 @@
         }
     }
     
+    function getConfidenceIndicator(confidence, method) {
+        if (confidence === null || confidence === undefined) {
+            return '';
+        }
+        
+        let icon, color, title;
+        
+        if (confidence >= 0.8) {
+            icon = 'bi-shield-check';
+            color = 'text-success';
+            title = `High confidence (${(confidence * 100).toFixed(0)}%)`;
+        } else if (confidence >= 0.5) {
+            icon = 'bi-shield-exclamation';
+            color = 'text-warning';
+            title = `Medium confidence (${(confidence * 100).toFixed(0)}%)`;
+        } else {
+            icon = 'bi-shield-x';
+            color = 'text-danger';
+            title = `Low confidence (${(confidence * 100).toFixed(0)}%)`;
+        }
+        
+        if (method) {
+            title += ` - ${method}`;
+        }
+        
+        return `<span class="${color} me-1" title="${title}"><i class="bi ${icon}"></i></span>`;
+    }
+
     function updateRecentTransactions(transactions) {
         const container = document.getElementById('recent-transactions');
         
@@ -176,7 +204,11 @@
             <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom">
                 <div>
                     <div class="fw-medium">${tx.description}</div>
-                    <small class="text-muted">${tx.date} • ${tx.category || 'Uncategorized'}</small>
+                    <small class="text-muted">
+                        ${tx.date} • 
+                        ${getConfidenceIndicator(tx.classification_confidence, tx.classification_method)}
+                        ${tx.category || 'Uncategorized'}
+                    </small>
                 </div>
                 <div class="text-end">
                     <div class="${tx.amount < 0 ? 'text-danger' : 'text-success'} fw-bold">

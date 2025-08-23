@@ -127,3 +127,66 @@ down-dev:
 logs-dev:
 	@echo "Showing development environment logs (Ctrl+C to exit)..."
 	docker compose -f docker-compose.dev.yml logs -f
+
+# LLM/AI Commands
+llm-up:  ## Start application with local LLM for auto-classification
+	@echo "🤖 Starting Budget App with Local LLM..."
+	@echo "This will:"
+	@echo "  - Start PostgreSQL database"
+	@echo "  - Start Ollama service"
+	@echo "  - Download LLM model (phi3:mini recommended)"
+	@echo "  - Start web application with LLM integration"
+	@echo ""
+	@echo "Note: First run will take time to download the model (~2GB)"
+	@echo "Press Ctrl+C to cancel..."
+	@sleep 3
+	docker compose -f docker-compose.llm.yml up -d
+
+llm-down:  ## Stop LLM environment
+	@echo "Stopping LLM environment..."
+	docker compose -f docker-compose.llm.yml down
+
+llm-init:  ## Initialize/download LLM model
+	@echo "🔄 Initializing LLM model..."
+	docker compose -f docker-compose.llm.yml up ollama-init
+
+llm-test:  ## Test LLM classification
+	@echo "🧪 Testing LLM classifier..."
+	docker compose -f docker-compose.llm.yml exec web python -c "from docker_llm_classifier import test_llm_classifier; test_llm_classifier()"
+
+llm-status:  ## Show LLM service status
+	@echo "📊 LLM Service Status:"
+	@echo ""
+	@echo "Containers:"
+	docker compose -f docker-compose.llm.yml ps
+	@echo ""
+	@echo "Health Check:"
+	curl -f http://localhost:5001/health 2>/dev/null | python -m json.tool || echo "Health check failed"
+
+llm-logs:  ## Show LLM environment logs
+	@echo "📋 LLM Environment Logs:"
+	docker compose -f docker-compose.llm.yml logs -f
+
+llm-models:  ## List available Ollama models
+	@echo "📦 Available Ollama Models:"
+	curl -s http://localhost:11434/api/tags | python -m json.tool || echo "Ollama not accessible"
+
+llm-speed-test:  ## Run classification speed comparison
+	@echo "🏁 Running LLM speed comparison test..."
+	docker compose -f docker-compose.llm.yml exec web python speed_comparison.py
+
+llm-use-fast:  ## Switch to ultra-fast TinyLlama model  
+	@echo "⚡ Switching to TinyLlama (ultra-fast, 637MB model)..."
+	docker exec budget_ollama ollama pull tinyllama:1.1b
+	@echo "Restarting web service with TinyLlama..."
+	@sed -i 's/OLLAMA_MODEL:.*/OLLAMA_MODEL: tinyllama:1.1b/' docker-compose.llm.yml
+	docker compose -f docker-compose.llm.yml restart web
+	@echo "✅ Switched to TinyLlama model"
+
+llm-use-balanced:  ## Switch to balanced Phi3-Mini model
+	@echo "⚖️ Switching to Phi3-Mini (balanced, 2.2GB model)..."
+	docker exec budget_ollama ollama pull phi3:mini
+	@echo "Restarting web service with Phi3-Mini..."
+	@sed -i 's/OLLAMA_MODEL:.*/OLLAMA_MODEL: phi3:mini/' docker-compose.llm.yml
+	docker compose -f docker-compose.llm.yml restart web
+	@echo "✅ Switched to Phi3-Mini model"

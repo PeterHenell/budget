@@ -6,6 +6,7 @@
 # Environment: python-dotenv for configuration
 # Security: bcrypt for password hashing
 # HTTP requests: requests for integration testing
+# LLM Integration: ollama-python for local AI classification
 Flask
 pandas
 pytest
@@ -14,3 +15,4 @@ requests
 psycopg2-binary
 python-dotenv
 bcrypt
+ollama
