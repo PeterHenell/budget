@@ -56,6 +56,42 @@ class DatabaseInitializer:
         """Close database connection"""
         if self.conn:
             self.conn.close()
+    
+    def needs_initialization(self) -> bool:
+        """Check if database needs initialization"""
+        try:
+            with self.conn.cursor() as cur:
+                # Check if essential tables exist
+                cur.execute("""
+                    SELECT COUNT(*) 
+                    FROM information_schema.tables 
+                    WHERE table_schema = 'public' 
+                    AND table_name IN ('categories', 'transactions', 'budgets', 'users')
+                """)
+                table_count = cur.fetchone()[0]
+                
+                if table_count < 4:
+                    return True
+                
+                # Check if we have default categories
+                cur.execute("SELECT COUNT(*) FROM categories")
+                category_count = cur.fetchone()[0]
+                
+                if category_count == 0:
+                    return True
+                
+                # Check if admin user exists
+                cur.execute("SELECT COUNT(*) FROM users WHERE role = 'admin'")
+                admin_count = cur.fetchone()[0]
+                
+                if admin_count == 0:
+                    return True
+                
+                return False
+        except Exception as e:
+            # If we can't check, assume we need initialization
+            print(f"Cannot check database status (assuming needs init): {e}")
+            return True
             self.conn = None
     
     def create_tables(self):
@@ -320,6 +356,36 @@ class DatabaseInitializer:
             raise
         finally:
             self.close()
+        
+    def auto_initialize_if_needed(self) -> bool:
+        """
+        Automatically initialize database if needed
+        Returns True if initialization was performed, False if not needed
+        """
+        try:
+            self.connect()
+            
+            if self.needs_initialization():
+                print("🔧 Database needs initialization, starting auto-setup...")
+                self.initialize_database(skip_admin=False)
+                return True
+            else:
+                print("✅ Database already initialized, no action needed")
+                return False
+        except Exception as e:
+            print(f"❌ Auto-initialization failed: {e}")
+            raise
+        finally:
+            self.close()
+
+
+def auto_initialize_database(connection_params: Dict[str, Any] = None) -> bool:
+    """
+    Convenience function for automatic database initialization
+    Returns True if initialization was performed
+    """
+    initializer = DatabaseInitializer(connection_params)
+    return initializer.auto_initialize_if_needed()
 
 
 def main():

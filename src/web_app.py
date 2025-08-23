@@ -20,6 +20,7 @@ from error_handling import (
     DatabaseError, ValidationError, AuthenticationError, validate_required_fields
 )
 from logging_config import init_logging, get_logger
+from init_database import auto_initialize_database
 
 # Load environment variables
 load_dotenv()
@@ -48,6 +49,19 @@ def get_logic():
                 'user': os.getenv('POSTGRES_USER', 'budget_user'),
                 'password': os.getenv('POSTGRES_PASSWORD', 'budget_password_2025')
             }
+            
+            # Auto-initialize database if needed
+            logger.info("Checking if database needs initialization...")
+            try:
+                initialized = auto_initialize_database(connection_params)
+                if initialized:
+                    logger.info("Database auto-initialized successfully")
+                else:
+                    logger.info("Database already initialized")
+            except Exception as e:
+                logger.warning(f"Database auto-initialization failed: {e}")
+                # Continue anyway - the BudgetLogic will handle connection issues
+            
             app.logic_instance = BudgetLogic(connection_params)
         return app.logic_instance
     except Exception as e:
@@ -696,7 +710,6 @@ def api_auto_classify():
         logic = get_logic()
 
         if not logic:
-
             return jsonify({'error': 'Database connection failed'}), 500
         data = request.get_json()
         confidence_threshold = float(data.get('confidence_threshold', 0.8))
@@ -717,6 +730,140 @@ def api_auto_classify():
             'suggestions_count': len(suggestions),
             'suggestions': suggestions[:20]  # Limit to 20 for response size
         })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/auto-classify/progress', methods=['POST'])
+@login_required
+def api_auto_classify_progress():
+    """API endpoint for auto-classification with progress tracking"""
+    try:
+        logic = get_logic()
+        if not logic:
+            return jsonify({'error': 'Database connection failed'}), 500
+            
+        data = request.get_json()
+        confidence_threshold = float(data.get('confidence_threshold', 0.8))
+        max_suggestions = int(data.get('max_suggestions', 1000))
+        
+        # Start auto-classification with progress tracking
+        import uuid
+        progress_id = str(uuid.uuid4())
+        
+        # Store progress in session (in production, use Redis or database)
+        if 'progress_data' not in session:
+            session['progress_data'] = {}
+        
+        session['progress_data'][progress_id] = {
+            'status': 'starting',
+            'progress': 0,
+            'total': 0,
+            'classified': 0,
+            'current_item': 'Initializing...',
+            'completed': False,
+            'error': None
+        }
+        
+        # Run classification in background (simplified version)
+        try:
+            # Get uncategorized transactions
+            uncategorized = logic.get_uncategorized_transactions()
+            total_transactions = len(uncategorized)
+            
+            session['progress_data'][progress_id].update({
+                'status': 'running',
+                'total': total_transactions,
+                'current_item': f'Processing {total_transactions} transactions...'
+            })
+            
+            if total_transactions == 0:
+                session['progress_data'][progress_id].update({
+                    'status': 'completed',
+                    'progress': 100,
+                    'completed': True,
+                    'current_item': 'No transactions to classify'
+                })
+                return jsonify({
+                    'progress_id': progress_id,
+                    'classified_count': 0,
+                    'total_count': 0
+                })
+            
+            # Initialize classification engine
+            engine = AutoClassificationEngine(logic)
+            classified_count = 0
+            
+            # Process transactions with progress updates
+            for i, transaction in enumerate(uncategorized):
+                # Update progress
+                progress_percent = int((i / total_transactions) * 100)
+                session['progress_data'][progress_id].update({
+                    'progress': progress_percent,
+                    'current_item': f'Classifying: {transaction[3][:50]}...'  # description
+                })
+                session.modified = True
+                
+                # Try to classify this transaction
+                tx_data = {
+                    'description': transaction[3],  # description
+                    'amount': float(transaction[4]),  # amount
+                    'date': transaction[2],  # date
+                    'year': transaction[5],  # year
+                    'month': transaction[6]  # month
+                }
+                
+                suggestion = engine.classify_transaction(tx_data)
+                if suggestion and suggestion['confidence'] >= confidence_threshold:
+                    # Apply the classification
+                    success = logic.reclassify_transaction(
+                        transaction[0],  # transaction_id
+                        suggestion['category'],
+                        confidence=suggestion['confidence'],
+                        classification_method=suggestion.get('method', 'auto')
+                    )
+                    if success:
+                        classified_count += 1
+            
+            # Mark as completed
+            session['progress_data'][progress_id].update({
+                'status': 'completed',
+                'progress': 100,
+                'classified': classified_count,
+                'completed': True,
+                'current_item': f'Completed! Classified {classified_count} transactions'
+            })
+            session.modified = True
+            
+            return jsonify({
+                'success': True,
+                'progress_id': progress_id,
+                'classified_count': classified_count,
+                'total_count': total_transactions
+            })
+            
+        except Exception as e:
+            session['progress_data'][progress_id].update({
+                'status': 'error',
+                'error': str(e),
+                'completed': True
+            })
+            session.modified = True
+            raise
+            
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/auto-classify/progress/<progress_id>', methods=['GET'])
+@login_required
+def api_auto_classify_progress_status(progress_id):
+    """Get the progress status for an auto-classification job"""
+    try:
+        if 'progress_data' not in session or progress_id not in session['progress_data']:
+            return jsonify({'error': 'Progress ID not found'}), 404
+            
+        progress_data = session['progress_data'][progress_id]
+        return jsonify(progress_data)
+        
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -899,6 +1046,7 @@ def health_check():
     """Health check endpoint for Docker containers"""
     try:
         # Check database connectivity
+        logic = get_logic()
         if logic:
             categories = logic.get_categories()
             db_status = "ok" if categories else "error"

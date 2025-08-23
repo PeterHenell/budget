@@ -126,7 +126,7 @@
 
 Run tests after each major change:
 - [ ] Unit tests: `pytest tests/test_*.py`
-- [ ] Integration tests: `pytest tests/test_integration*.py` 
+- [ ] Integration tests: `./run-integration-tests.sh` 
 - [ ] Manual smoke test: Import CSV, classify transactions
 - [ ] Web interface test: Login, view transactions, classifications
 
