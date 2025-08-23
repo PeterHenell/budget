@@ -350,6 +350,27 @@ def api_categories():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/categories', methods=['POST'])
+@login_required
+def api_create_category():
+    """API endpoint to create a new category"""
+    if not init_logic():
+        return jsonify({'error': 'Database connection failed'}), 500
+    
+    try:
+        data = request.get_json()
+        name = data.get('name', '').strip()
+        
+        if not name:
+            return jsonify({'error': 'Category name is required'}), 400
+        
+        logic.add_category(name)
+        return jsonify({'success': True, 'message': f'Category "{name}" created successfully'})
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/categories/<category_name>', methods=['DELETE'])
 @login_required
 def api_delete_category(category_name):
@@ -358,9 +379,10 @@ def api_delete_category(category_name):
         return jsonify({'error': 'Database connection failed'}), 500
     
     try:
-        # Note: This would need to be implemented in logic.py
-        # For now, return not implemented
-        return jsonify({'error': 'Delete category not implemented yet'}), 501
+        logic.remove_category(category_name)
+        return jsonify({'success': True, 'message': f'Category "{category_name}" deleted successfully'})
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 404
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -443,9 +465,23 @@ def api_budgets(year):
         return jsonify({'error': 'Database connection failed'}), 500
     
     try:
-        budgets = logic.get_all_budgets()  # Fix method name
-        year_budgets = [b for b in budgets if b.get('year') == year]
-        return jsonify(year_budgets)
+        # Get all categories
+        all_categories = logic.get_categories()
+        
+        # Get existing budgets for the year
+        existing_budgets = logic.get_yearly_budgets(year)  # This returns {category: amount}
+        
+        # Create budget entries for all categories (with 0 for missing ones)
+        budget_list = []
+        for category in all_categories:
+            budget_amount = existing_budgets.get(category, 0.0)
+            budget_list.append({
+                'category': category,
+                'year': year,
+                'yearly_budget': float(budget_amount)
+            })
+        
+        return jsonify({'budgets': budget_list})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -472,28 +508,21 @@ def api_set_budget():
 
 @app.route('/api/budgets/<int:year>', methods=['POST'])
 @login_required
-def api_set_budgets(year):
-    """API endpoint to set multiple budgets for a year"""
+def api_set_budget_for_year(year):
+    """API endpoint to set a budget for a specific year"""
     if not init_logic():
         return jsonify({'error': 'Database connection failed'}), 500
     
     try:
         data = request.get_json()
-        budgets = data.get('budgets', [])
+        category = data.get('category')
+        amount = data.get('amount')
         
-        success_count = 0
-        for budget in budgets:
-            category = budget.get('category')
-            amount = budget.get('amount')
-            if category and amount is not None:
-                if logic.set_budget(category, year, float(amount)):
-                    success_count += 1
+        if not category or amount is None:
+            return jsonify({'error': 'Missing required fields: category, amount'}), 400
         
-        return jsonify({
-            'success': True,
-            'updated': success_count,
-            'total': len(budgets)
-        })
+        success = logic.set_budget(category, year, float(amount))
+        return jsonify({'success': success, 'message': f'Budget set for {category}'})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
