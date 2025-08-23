@@ -35,8 +35,10 @@ class DatabaseInitializer:
     def connect(self):
         """Connect to PostgreSQL database"""
         try:
+            # Add connection timeout to prevent hanging
+            self.connection_params['connect_timeout'] = 10
             self.conn = psycopg2.connect(**self.connection_params)
-            self.conn.autocommit = False  # Use transactions
+            self.conn.autocommit = True  # Use autocommit to prevent transaction issues
             psycopg2.extras.register_default_json(globally=True)
             print(f"Connected to database: {self.connection_params['database']}")
         except psycopg2.Error as e:
@@ -136,12 +138,10 @@ class DatabaseInitializer:
                         EXECUTE FUNCTION update_updated_at_column();
                 """)
             
-            # Commit table creation
-            self.conn.commit()
+            # Commit table creation - not needed with autocommit
             print("  ✓ All tables created successfully")
             
         except psycopg2.Error as e:
-            self.conn.rollback()
             raise Exception(f"Failed to create tables: {e}")
     
     def create_indexes(self):
@@ -167,11 +167,9 @@ class DatabaseInitializer:
                 print(f"  - Creating index: {idx_name}")
                 c.execute(f"CREATE INDEX IF NOT EXISTS {idx_name} ON {table}({columns})")
             
-            self.conn.commit()
             print("  ✓ All indexes created successfully")
             
         except psycopg2.Error as e:
-            self.conn.rollback()
             raise Exception(f"Failed to create indexes: {e}")
     
     def insert_default_categories(self):
@@ -195,19 +193,16 @@ class DatabaseInitializer:
             for cat in default_categories:
                 try:
                     c.execute("INSERT INTO categories (name) VALUES (%s)", (cat,))
-                    self.conn.commit()
                     created_count += 1
                     print(f"  - Created category: {cat}")
                 except psycopg2.IntegrityError:
-                    # Category already exists, rollback and continue
-                    self.conn.rollback()
+                    # Category already exists, continue
                     print(f"  - Category already exists: {cat}")
                     continue
             
             print(f"  ✓ Created {created_count} new categories")
             
         except psycopg2.Error as e:
-            self.conn.rollback()
             raise Exception(f"Failed to create default categories: {e}")
     
     def create_admin_user(self, username: str = "admin", password: str = "admin"):
@@ -234,17 +229,14 @@ class DatabaseInitializer:
                     "INSERT INTO users (username, password_hash, role) VALUES (%s, %s, %s)",
                     (username, password_hash, "admin")
                 )
-                self.conn.commit()
                 print(f"  ✓ Created admin user: {username} (password: {password})")
                 print(f"  ⚠ Remember to change the default password!")
             else:
                 # Update existing user to have admin role
                 c.execute("UPDATE users SET role = %s WHERE username = %s", ("admin", username))
-                self.conn.commit()
                 print(f"  ✓ Updated existing user {username} to admin role")
                 
         except psycopg2.Error as e:
-            self.conn.rollback()
             raise Exception(f"Failed to create admin user: {e}")
     
     def upgrade_existing_database(self):
@@ -283,11 +275,9 @@ class DatabaseInitializer:
                 except psycopg2.Error:
                     pass
             
-            self.conn.commit()
             print("  ✓ Database upgrades completed")
             
         except psycopg2.Error as e:
-            self.conn.rollback()
             print(f"  ⚠ Some database upgrades failed: {e}")
     
     def initialize_database(self, skip_admin: bool = False):

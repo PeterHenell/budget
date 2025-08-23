@@ -53,19 +53,19 @@ if [[ ! -f "docker-compose.test.yml" ]]; then
     exit 1
 fi
 
-if [[ ! -f "tests/test_integration.py" ]]; then
-    log_error "tests/test_integration.py not found"
+if [[ ! -f "test_integration.py" ]]; then
+    log_error "test_integration.py not found"
     exit 1
 fi
 
 # Install test dependencies locally if needed
-if [[ ! -d "venv" ]]; then
+if [[ ! -d "../venv" ]]; then
     log_info "Creating virtual environment for test dependencies..."
-    python3 -m venv venv
+    cd .. && python3 -m venv venv && cd tests
 fi
 
 log_info "Installing/updating test dependencies..."
-source venv/bin/activate
+source ../venv/bin/activate
 pip install -q requests pytest pytest-html
 
 # Clean up any existing test containers
@@ -80,7 +80,7 @@ echo ""
 cd "$(dirname "$0")"
 
 # Run pytest with detailed output
-python -m pytest tests/test_integration.py \
+python -m pytest test_integration.py \
     -v \
     --tb=short \
     --html=test-report.html \

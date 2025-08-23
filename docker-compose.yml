@@ -65,7 +65,9 @@ services:
     volumes:
       - ./src:/app
       - ./src/uploads:/app/uploads
-    command: ["python", "web_app.py"]
+      - ./input:/app/input:ro
+      - ./sample-csv:/app/sample-csv:ro
+      - ./tests:/app/tests:ro
     depends_on:
       postgres:
         condition: service_healthy

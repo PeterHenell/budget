@@ -1,35 +1,58 @@
 #!/usr/bin/env python3
 """
-Quick test script for PostgreSQL database connection
+Test script for PostgreSQL database connection
 """
-import os
-import sys
-from pathlib import Path
+import pytest
+from budget_db_postgres import BudgetDb
 
-# Add src directory to path
-sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
+class TestDatabaseConnection:
+    """Test database connectivity"""
+    
+    def test_database_connection(self):
+        """Test that we can connect to the database"""
+        db = BudgetDb()
+        assert db is not None
+        
+        # Test that connection is working by getting categories
+        categories = db.get_categories()
+        assert isinstance(categories, list)
+        
+        db.close()
+    
+    def test_get_categories(self):
+        """Test that we can retrieve categories from the database"""
+        db = BudgetDb()
+        
+        categories = db.get_categories()
+        assert isinstance(categories, list)
+        assert len(categories) >= 0  # Should have at least 0 categories
+        
+        db.close()
+    
+    def test_database_operations(self):
+        """Test basic database operations"""
+        db = BudgetDb()
+        
+        # Test getting categories (should not fail)
+        categories = db.get_categories()
+        print(f"✓ Found {len(categories)} categories")
+        
+        # Test connection is still working by getting categories again
+        categories2 = db.get_categories()
+        assert isinstance(categories2, list)
+        assert len(categories2) == len(categories)
+        
+        db.close()
+        print("✓ Database operations test completed")
 
-# Set environment variables for testing
-os.environ['POSTGRES_HOST'] = 'localhost'
-os.environ['POSTGRES_DB'] = 'budget_db'
-os.environ['POSTGRES_USER'] = 'budget_user'
-os.environ['POSTGRES_PASSWORD'] = 'budget_password_2025'
-os.environ['POSTGRES_PORT'] = '5432'
-
-try:
-    from budget_db_postgres import BudgetDb
-    print("✓ Successfully imported BudgetDb")
-    
-    db = BudgetDb()
-    print("✓ Database connection established")
-    
-    categories = db.get_categories()
-    print(f"✓ Found {len(categories)} categories: {categories}")
-    
-    db.close()
-    print("✓ Database connection closed")
-    print("\n🎉 PostgreSQL database test successful!")
-    
-except Exception as e:
-    print(f"❌ Database test failed: {e}")
-    sys.exit(1)
+if __name__ == '__main__':
+    # Allow running as standalone script for debugging
+    test = TestDatabaseConnection()
+    try:
+        test.test_database_connection()
+        test.test_get_categories()
+        test.test_database_operations()
+        print("🎉 All database tests passed!")
+    except Exception as e:
+        print(f"❌ Database test failed: {e}")
+        raise

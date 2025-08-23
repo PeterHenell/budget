@@ -19,7 +19,9 @@ services:
       retries: 5
 
   web-test:
-    build: .
+    build: 
+      context: ..
+      dockerfile: Dockerfile
     container_name: budget_web_test
     environment:
       POSTGRES_HOST: postgres-test

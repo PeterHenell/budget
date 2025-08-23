@@ -2,19 +2,16 @@
 """
 Test script for confidence tracking functionality
 """
-import sys
-import os
-sys.path.append('/home/mrm/src/github/budget/src')
+import pytest
+from logic import BudgetLogic
+from budget_db_postgres import BudgetDb
 
-# Test database connection and confidence functionality
-def test_confidence_tracking():
-    try:
-        from logic import BudgetLogic
-        from budget_db_postgres import BudgetDb
-        
-        print("✅ Imports successful")
-        
-        # Test database connection (without Docker environment variables)
+class TestConfidenceTracking:
+    """Test confidence tracking functionality"""
+    
+    def test_confidence_tracking_integration(self):
+        """Test confidence tracking with database integration"""
+        # Test database connection (use pytest fixtures for connection params)
         connection_params = {
             'host': 'localhost',
             'port': 5432,
@@ -28,8 +25,7 @@ def test_confidence_tracking():
         if db.test_connection():
             print("✅ Database connection successful")
         else:
-            print("❌ Database connection failed")
-            return
+            pytest.fail("❌ Database connection failed")
             
         logic = BudgetLogic(connection_params)
         
@@ -57,17 +53,25 @@ def test_confidence_tracking():
             
             if success:
                 print("✅ Reclassification with confidence successful")
+                
+                # Verify the confidence was stored correctly
+                transactions = logic.db.get_transactions(limit=1)
+                if transactions and transactions[0]['id'] == transaction_id:
+                    tx = transactions[0]
+                    assert tx.get('classification_confidence') == 0.75
+                    assert tx.get('classification_method') == 'manual'
+                    assert tx.get('category') == 'Nöje'
+                    print(f"✅ Confidence verification: {tx.get('classification_confidence')}")
+                else:
+                    pytest.fail("❌ Could not retrieve updated transaction")
             else:
-                print("❌ Reclassification failed")
+                pytest.fail("❌ Reclassification failed")
         else:
-            print("❌ Failed to add transaction")
+            pytest.fail("❌ Failed to add transaction")
             
         logic.close()
-        
-    except ImportError as e:
-        print(f"❌ Import error: {e}")
-    except Exception as e:
-        print(f"❌ Error: {e}")
+        print("✅ Confidence tracking test completed successfully!")
 
 if __name__ == '__main__':
-    test_confidence_tracking()
+    test = TestConfidenceTracking()
+    test.test_confidence_tracking_integration()
