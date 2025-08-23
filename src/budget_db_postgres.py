@@ -138,10 +138,10 @@ class BudgetDb:
 
     # === Budget Operations ===
     
+    @handle_database_operation("set_budget")
     def set_budget(self, category: str, year: int, amount: float):
         """Set yearly budget for a category"""
-        c = self.conn.cursor()
-        try:
+        with DatabaseTransaction(self.conn) as cursor:
             cat_id = self.get_category_id(category)
             if not cat_id:
                 # Create the category if it doesn't exist
@@ -150,17 +150,13 @@ class BudgetDb:
                 if not cat_id:
                     raise ValueError(f"Failed to create category: {category}")
             
-            c.execute("""
+            cursor.execute("""
                 INSERT INTO budgets (category_id, year, amount)
                 VALUES (%s, %s, %s)
                 ON CONFLICT (category_id, year) 
                 DO UPDATE SET amount = EXCLUDED.amount
             """, (cat_id, year, amount))
-            self.conn.commit()
             return True
-        except psycopg2.Error as e:
-            self.conn.rollback()
-            raise Exception(f"Failed to set budget: {e}")
 
     def get_budget(self, category: str, year: int) -> float:
         """Get yearly budget for a category"""
@@ -331,10 +327,10 @@ class BudgetDb:
                 
             return True
 
+    @handle_database_operation("import_transactions_bulk")
     def import_transactions_bulk(self, transactions_data, category_name: str = "Uncategorized"):
         """Bulk import transactions"""
-        c = self.conn.cursor()
-        try:
+        with DatabaseTransaction(self.conn) as cursor:
             # Ensure Uncategorized category exists
             cat_id = self.get_category_id(category_name)
             if not cat_id:
@@ -342,7 +338,7 @@ class BudgetDb:
                 cat_id = self.get_category_id(category_name)
             
             for _, row in transactions_data.iterrows():
-                c.execute("""
+                cursor.execute("""
                     INSERT INTO transactions (verifikationsnummer, date, description, amount, category_id, year, month)
                     VALUES (%s, %s, %s, %s, %s, %s, %s)
                 """, (
@@ -354,41 +350,28 @@ class BudgetDb:
                     row['year'],
                     row['month']
                 ))
-            
-            self.conn.commit()
-        except psycopg2.Error as e:
-            self.conn.rollback()
-            raise Exception(f"Failed to import transactions: {e}")
 
+    @handle_database_operation("delete_transaction")
     def delete_transaction(self, transaction_id: int):
         """Delete a single transaction by ID"""
-        c = self.conn.cursor()
-        try:
-            c.execute("DELETE FROM transactions WHERE id = %s", (transaction_id,))
-            if c.rowcount == 0:
+        with DatabaseTransaction(self.conn) as cursor:
+            cursor.execute("DELETE FROM transactions WHERE id = %s", (transaction_id,))
+            if cursor.rowcount == 0:
                 raise ValueError(f"Transaction with ID {transaction_id} not found")
-            self.conn.commit()
             return True
-        except psycopg2.Error as e:
-            self.conn.rollback()
-            raise Exception(f"Failed to delete transaction: {e}")
 
+    @handle_database_operation("delete_transactions_bulk")
     def delete_transactions_bulk(self, transaction_ids: List[int]):
         """Delete multiple transactions by their IDs"""
         if not transaction_ids:
             return 0
         
-        c = self.conn.cursor()
-        try:
+        with DatabaseTransaction(self.conn) as cursor:
             # Use IN clause for bulk deletion
             placeholders = ','.join(['%s'] * len(transaction_ids))
-            c.execute(f"DELETE FROM transactions WHERE id IN ({placeholders})", transaction_ids)
-            deleted_count = c.rowcount
-            self.conn.commit()
+            cursor.execute(f"DELETE FROM transactions WHERE id IN ({placeholders})", transaction_ids)
+            deleted_count = cursor.rowcount
             return deleted_count
-        except psycopg2.Error as e:
-            self.conn.rollback()
-            raise Exception(f"Failed to delete transactions: {e}")
 
     # === Reporting Operations ===
     
@@ -456,6 +439,7 @@ class BudgetDb:
         ]
 
     # User management methods
+    @handle_database_operation("authenticate_user")
     def authenticate_user(self, username: str, password: str) -> bool:
         """Authenticate a user with username and password"""
         try:
@@ -472,38 +456,35 @@ class BudgetDb:
         except ImportError:
             # bcrypt not available
             return False
-        except psycopg2.Error as e:
-            self.conn.rollback()
+        except Exception:
             return False
 
+    @handle_database_operation("create_user")
     def create_user(self, username: str, password: str, role: str = 'user') -> bool:
         """Create a new user with encrypted password"""
         try:
             import bcrypt
             password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
             
-            c = self.conn.cursor()
-            c.execute("INSERT INTO users (username, password_hash, role) VALUES (%s, %s, %s)", 
-                     (username, password_hash, role))
-            self.conn.commit()
-            return True
-        except (ImportError, psycopg2.Error):
-            self.conn.rollback()
+            with DatabaseTransaction(self.conn) as cursor:
+                cursor.execute("INSERT INTO users (username, password_hash, role) VALUES (%s, %s, %s)", 
+                         (username, password_hash, role))
+                return True
+        except ImportError:
             return False
 
+    @handle_database_operation("update_user_password")
     def update_user_password(self, username: str, new_password: str) -> bool:
         """Update user password"""
         try:
             import bcrypt
             password_hash = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
             
-            c = self.conn.cursor()
-            c.execute("UPDATE users SET password_hash = %s WHERE username = %s", 
-                     (password_hash, username))
-            self.conn.commit()
-            return c.rowcount > 0
-        except (ImportError, psycopg2.Error):
-            self.conn.rollback()
+            with DatabaseTransaction(self.conn) as cursor:
+                cursor.execute("UPDATE users SET password_hash = %s WHERE username = %s", 
+                         (password_hash, username))
+                return cursor.rowcount > 0
+        except ImportError:
             return False
 
     def list_users(self) -> List[Dict]:
@@ -556,38 +537,26 @@ class BudgetDb:
         except psycopg2.Error:
             return False
 
+    @handle_database_operation("update_user_role")
     def update_user_role(self, username: str, new_role: str) -> bool:
         """Update user role"""
-        try:
-            c = self.conn.cursor()
-            c.execute("UPDATE users SET role = %s WHERE username = %s", (new_role, username))
-            self.conn.commit()
-            return c.rowcount > 0
-        except psycopg2.Error:
-            self.conn.rollback()
-            return False
+        with DatabaseTransaction(self.conn) as cursor:
+            cursor.execute("UPDATE users SET role = %s WHERE username = %s", (new_role, username))
+            return cursor.rowcount > 0
 
+    @handle_database_operation("toggle_user_status")
     def toggle_user_status(self, username: str) -> bool:
         """Toggle user active status"""
-        try:
-            c = self.conn.cursor()
-            c.execute("UPDATE users SET is_active = NOT is_active WHERE username = %s", (username,))
-            self.conn.commit()
-            return c.rowcount > 0
-        except psycopg2.Error:
-            self.conn.rollback()
-            return False
+        with DatabaseTransaction(self.conn) as cursor:
+            cursor.execute("UPDATE users SET is_active = NOT is_active WHERE username = %s", (username,))
+            return cursor.rowcount > 0
 
+    @handle_database_operation("delete_user")
     def delete_user(self, username: str) -> bool:
         """Delete a user"""
-        try:
-            c = self.conn.cursor()
-            c.execute("DELETE FROM users WHERE username = %s", (username,))
-            self.conn.commit()
-            return c.rowcount > 0
-        except psycopg2.Error:
-            self.conn.rollback()
-            return False
+        with DatabaseTransaction(self.conn) as cursor:
+            cursor.execute("DELETE FROM users WHERE username = %s", (username,))
+            return cursor.rowcount > 0
 
     def get_classified_transactions_for_patterns(self):
         """Get classified transactions with categories for building classification patterns"""
