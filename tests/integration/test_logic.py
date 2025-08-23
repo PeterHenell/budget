@@ -17,13 +17,13 @@ class TestBudgetLogic(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Set up test database connection"""
-        # Use test database configuration
+        # Use test database configuration - same as main but with test database name
         cls.test_connection_params = {
-            'host': os.getenv('POSTGRES_HOST', 'localhost'),
+            'host': os.getenv('POSTGRES_HOST', 'postgres'),
             'database': os.getenv('POSTGRES_TEST_DB', 'budget_test_db'),
-            'user': os.getenv('POSTGRES_USER', 'budget_test_user'),
-            'password': os.getenv('POSTGRES_PASSWORD', 'budget_test_password'),
-            'port': os.getenv('POSTGRES_PORT', '5433')  # Test database port
+            'user': os.getenv('POSTGRES_USER', 'budget_user'),
+            'password': os.getenv('POSTGRES_PASSWORD', 'budget_password_2025'),
+            'port': os.getenv('POSTGRES_PORT', '5432')
         }
         
         # Wait for database to be ready
@@ -43,22 +43,8 @@ class TestBudgetLogic(unittest.TestCase):
         """Set up test data"""
         self.logic = BudgetLogic(self.test_connection_params)
         
-        # Clean up any existing test data
-        try:
-            self.logic.remove_category('TestCat')
-            self.logic.remove_category('TestCat2')
-            self.logic.remove_category('TestCat3')
-            self.logic.remove_category('TestCat4')
-        except:
-            pass
-        
-        # Clean up any test transactions (simple approach - remove by verifikationsnummer patterns)
-        try:
-            cursor = self.logic.conn.cursor()
-            cursor.execute("DELETE FROM transactions WHERE verifikationsnummer LIKE 'TEST%' OR verifikationsnummer LIKE 'T%' OR verifikationsnummer LIKE 'U%' OR verifikationsnummer LIKE 'Y%'")
-            self.logic.conn.commit()
-        except:
-            pass
+        # Robust cleanup of existing test data
+        self._cleanup_test_data()
             
         # Add a test category and set yearly budget
         self.logic.add_category('TestCat')
@@ -66,23 +52,38 @@ class TestBudgetLogic(unittest.TestCase):
     
     def tearDown(self):
         """Clean up test data"""
-        try:
-            # Clean up test transactions
-            cursor = self.logic.conn.cursor()
-            cursor.execute("DELETE FROM transactions WHERE verifikationsnummer LIKE 'TEST%' OR verifikationsnummer LIKE 'T%' OR verifikationsnummer LIKE 'U%' OR verifikationsnummer LIKE 'Y%'")
-            self.logic.conn.commit()
-            
-            # Clean up test categories
-            self.logic.remove_category('TestCat')
-            self.logic.remove_category('TestCat2')
-            self.logic.remove_category('TestCat3')
-            self.logic.remove_category('TestCat4')
-        except:
-            pass
+        self._cleanup_test_data()
         self.logic.close()
+        
+    def _cleanup_test_data(self):
+        """Robustly clean up all test data"""
+        try:
+            cursor = self.logic.db.conn.cursor()
+            
+            # Clean up ALL transactions in test database (since it should be isolated)
+            cursor.execute("DELETE FROM transactions")
+            
+            # Clean up ALL budgets in test database  
+            cursor.execute("DELETE FROM budgets")
+            
+            # Clean up test categories (keep only defaults)
+            cursor.execute("""
+                DELETE FROM categories 
+                WHERE name NOT IN ('Mat', 'Boende', 'Transport', 'Nöje', 'Hälsa', 'Övrigt', 'Uncategorized')
+            """)
+            
+            self.logic.db.conn.commit()
+            
+        except Exception as e:
+            # If cleanup fails, try to rollback and continue
+            print(f"Warning: Test cleanup failed: {e}")
+            try:
+                self.logic.db.conn.rollback()
+            except:
+                pass
 
     def test_db_connection(self):
-        self.assertIsNotNone(self.logic.conn)
+        self.assertIsNotNone(self.logic.db.conn)
 
     def test_category_management(self):
         cats = self.logic.get_categories()

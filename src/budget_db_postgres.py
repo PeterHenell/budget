@@ -215,7 +215,12 @@ class BudgetDb:
                 INSERT INTO transactions (verifikationsnummer, date, description, amount, category_id, year, month,
                                         classification_confidence, classification_method)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
             """, (verifikationsnummer, date, description, amount, cat_id, year, month, confidence, method))
+            
+            # Return the transaction ID
+            result = cursor.fetchone()
+            return result[0] if result else None
 
     def get_transactions(self, category: str = None, year: int = None, 
                         limit: int = None, offset: int = None) -> List[Dict]:

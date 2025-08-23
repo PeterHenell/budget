@@ -82,9 +82,9 @@ class TestBudgetLogic(unittest.TestCase):
     def _clean_test_data(self):
         """Remove test data from database"""
         try:
-            cursor = self.logic.conn.cursor()
+            cursor = self.logic.db.conn.cursor()
             
-            # More aggressive cleanup - delete all transactions from today (test transactions)
+            # First, delete all test transactions
             from datetime import date
             today = date.today()
             cursor.execute("DELETE FROM transactions WHERE created_at::date = %s", (today,))
@@ -93,30 +93,43 @@ class TestBudgetLogic(unittest.TestCase):
             cursor.execute("DELETE FROM transactions WHERE description LIKE %s OR description LIKE %s OR description LIKE %s", 
                           ('%test%', '%Test%', '%Desc%'))
             
-            # Delete test budgets
+            # Delete test budgets first (foreign key constraint)
             cursor.execute("""
                 DELETE FROM budgets WHERE category_id IN (
                     SELECT id FROM categories WHERE name LIKE 'TestCat%'
                 )
             """)
             
-            # Delete test categories (except default ones)
-            default_categories = ["Mat", "Boende", "Transport", "Nöje", "Hälsa", "Övrigt", "Uncategorized"]
-            placeholders = ','.join(['%s'] * len(default_categories))
-            cursor.execute(f"""
-                DELETE FROM categories 
-                WHERE name LIKE 'TestCat%' 
-                AND name NOT IN ({placeholders})
-            """, default_categories)
+            # Delete test categories - be more aggressive
+            cursor.execute("DELETE FROM categories WHERE name LIKE %s", ('TestCat%',))
+            cursor.execute("DELETE FROM categories WHERE name = %s", ('TestCat',))
             
-            self.logic.conn.commit()
+            # Also clean up any orphaned test categories that might exist
+            cursor.execute("""
+                DELETE FROM categories 
+                WHERE name NOT IN ('Mat', 'Boende', 'Transport', 'Nöje', 'Hälsa', 'Övrigt', 'Uncategorized')
+                AND (name LIKE 'Test%' OR name LIKE '%test%' OR created_at::date = %s)
+            """, (today,))
+            
+            self.logic.db.conn.commit()
+            print(f"✓ Cleaned test data successfully")
+            
         except Exception as e:
-            if self.logic.conn:
-                self.logic.conn.rollback()
+            if self.logic.db.conn:
+                self.logic.db.conn.rollback()
             print(f"Warning: Could not clean test data: {e}")
+            # Try to clean up known test categories individually
+            try:
+                cursor = self.logic.db.conn.cursor()
+                for test_cat in ['TestCat', 'TestCat3', 'TestCat4']:
+                    cursor.execute("DELETE FROM categories WHERE name = %s", (test_cat,))
+                self.logic.db.conn.commit()
+                print("✓ Individual cleanup completed")
+            except Exception as e2:
+                print(f"Individual cleanup also failed: {e2}")
 
     def test_db_connection(self):
-        self.assertIsNotNone(self.logic.conn)
+        self.assertIsNotNone(self.logic.db.conn)
 
     def test_category_management(self):
         cats = self.logic.get_categories()

@@ -13,7 +13,7 @@ class TestConfidenceTracking:
         """Test confidence tracking with database integration"""
         # Test database connection (use pytest fixtures for connection params)
         connection_params = {
-            'host': 'localhost',
+            'host': 'postgres',
             'port': 5432,
             'database': 'budget_db',
             'user': 'budget_user',
@@ -22,22 +22,29 @@ class TestConfidenceTracking:
         
         print("🔍 Testing database connection...")
         db = BudgetDb(connection_params)
-        if db.test_connection():
-            print("✅ Database connection successful")
-        else:
-            pytest.fail("❌ Database connection failed")
+        try:
+            # Simple connection test - try to get categories
+            categories = db.get_categories()
+            print(f"✅ Database connection successful - found {len(categories)} categories")
+        except Exception as e:
+            pytest.fail(f"❌ Database connection failed: {e}")
             
         logic = BudgetLogic(connection_params)
         
         print("🔍 Testing add_transaction with confidence...")
-        transaction_id = logic.add_transaction(
-            date='2025-08-23',
-            description='TEST CONFIDENCE ICA STORE',
-            amount=-125.50,
-            category_name='Mat',
-            confidence=0.95,
-            classification_method='hybrid-ai'
-        )
+        try:
+            transaction_id = logic.add_transaction(
+                date='2025-08-23',
+                description='TEST CONFIDENCE ICA STORE',
+                amount=-125.50,
+                category_name='Mat',
+                confidence=0.95,
+                classification_method='hybrid-ai'
+            )
+            print(f"Debug: add_transaction returned: {transaction_id}")
+        except Exception as e:
+            print(f"Error in add_transaction: {e}")
+            transaction_id = None
         
         if transaction_id:
             print(f"✅ Transaction added with ID: {transaction_id}")
