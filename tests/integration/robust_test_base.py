@@ -210,11 +210,22 @@ class RobustIntegrationTestBase:
         start_time = time.time()
         while time.time() - start_time < max_wait:
             try:
-                response = requests.get(f"{self.BASE_URL}/health", timeout=5)
-                if response.status_code in [200, 503]:  # 503 might indicate service issues but it's responding
-                    print("✓ Services are ready!")
+                # Try both health endpoint and login page
+                health_response = requests.get(f"{self.BASE_URL}/health", timeout=3)
+                if health_response.status_code == 200:
+                    health_data = health_response.json()
+                    if health_data.get('status') == 'healthy':
+                        print("✓ Services are healthy!")
+                        return
+                
+                # Fallback: check if login page loads (more reliable)
+                login_response = requests.get(f"{self.BASE_URL}/login", timeout=3)
+                if login_response.status_code == 200 and 'login' in login_response.text.lower():
+                    print("✓ Services are ready (login page accessible)!")
                     return
-            except requests.exceptions.RequestException:
+                    
+            except requests.exceptions.RequestException as e:
+                print(f"⏳ Service check failed: {e}")
                 pass
             
             time.sleep(2)

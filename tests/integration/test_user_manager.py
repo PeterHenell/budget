@@ -41,11 +41,14 @@ class IntegrationTestUserManager:
     @contextmanager
     def database_connection(self):
         """Context manager for database connections"""
+        conn = None
         try:
-            self.connect()
-            yield self.conn
+            conn = psycopg2.connect(**self.connection_params)
+            conn.autocommit = True
+            yield conn
         finally:
-            pass  # Don't close connection here as it might be reused
+            if conn:
+                conn.close()
     
     def generate_test_password(self, length: int = 12) -> str:
         """Generate a secure test password"""
@@ -77,9 +80,9 @@ class IntegrationTestUserManager:
         except ImportError:
             raise Exception("bcrypt is required for user creation but not installed")
             
-        with self.database_connection():
+        with self.database_connection() as conn:
             try:
-                c = self.conn.cursor()
+                c = conn.cursor()
                 
                 # Check if user already exists
                 c.execute("SELECT COUNT(*) FROM users WHERE username = %s", (username,))
@@ -134,9 +137,9 @@ class IntegrationTestUserManager:
     
     def user_exists(self, username: str) -> bool:
         """Check if a user exists in the database"""
-        with self.database_connection():
+        with self.database_connection() as conn:
             try:
-                c = self.conn.cursor()
+                c = conn.cursor()
                 c.execute("SELECT COUNT(*) FROM users WHERE username = %s", (username,))
                 return c.fetchone()[0] > 0
             except psycopg2.Error:
@@ -144,9 +147,9 @@ class IntegrationTestUserManager:
     
     def get_user_role(self, username: str) -> Optional[str]:
         """Get the role of a user"""
-        with self.database_connection():
+        with self.database_connection() as conn:
             try:
-                c = self.conn.cursor()
+                c = conn.cursor()
                 c.execute("SELECT role FROM users WHERE username = %s", (username,))
                 result = c.fetchone()
                 return result[0] if result else None
@@ -163,9 +166,9 @@ class IntegrationTestUserManager:
         Returns:
             True if user was deleted, False otherwise
         """
-        with self.database_connection():
+        with self.database_connection() as conn:
             try:
-                c = self.conn.cursor()
+                c = conn.cursor()
                 c.execute("DELETE FROM users WHERE username = %s", (username,))
                 deleted = c.rowcount > 0
                 
@@ -205,9 +208,9 @@ class IntegrationTestUserManager:
             'integration_admin', 'integration_user'
         ]
         
-        with self.database_connection():
+        with self.database_connection() as conn:
             try:
-                c = self.conn.cursor()
+                c = conn.cursor()
                 for username in standard_test_users:
                     c.execute("DELETE FROM users WHERE username = %s", (username,))
                     if c.rowcount > 0:
@@ -269,7 +272,7 @@ def get_test_connection_params() -> Dict[str, Any]:
     
     return {
         'host': host,
-        'database': os.getenv('POSTGRES_DB', 'budget_test_db'),
+        'database': os.getenv('POSTGRES_DB', 'budget_db'),
         'user': os.getenv('POSTGRES_USER', 'budget_user'),
         'password': os.getenv('POSTGRES_PASSWORD', 'budget_password_2025'),
         'port': int(os.getenv('POSTGRES_PORT', '5432'))

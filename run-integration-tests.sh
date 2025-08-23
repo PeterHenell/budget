@@ -3,8 +3,46 @@
 # Integration Test Runner - Budget App  
 # Runs tests that require database connection
 # These tests ALWAYS run inside Docker containers with database access
+#
+# Usage:
+#   ./run-integration-tests.sh                              # Run all integration tests
+#   ./run-integration-tests.sh -k "TestAuthentication"      # Run specific test class
+#   ./run-integration-tests.sh -k "test_login"              # Run specific test method
+#   ./run-integration-tests.sh --maxfail=1 -v               # Stop after first failure, verbose
+#   ./run-integration-tests.sh -h                           # Show help
+#
+# All parameters are passed directly to pytest
 
 set -e  # Exit on error
+
+# Store all script arguments to pass to pytest
+PYTEST_ARGS="$@"
+
+# Show help if requested
+if [[ "$*" == *"-h"* ]] || [[ "$*" == *"--help"* ]]; then
+    echo "🔗 Integration Test Runner - Budget App"
+    echo "==============================================="
+    echo "Usage: $0 [pytest-options]"
+    echo ""
+    echo "Examples:"
+    echo "  $0                                    # Run all integration tests"
+    echo "  $0 -k 'TestAuthentication'           # Run specific test class"
+    echo "  $0 -k 'test_login'                   # Run specific test method"
+    echo "  $0 -k 'test_login_page_loads'        # Run single test"
+    echo "  $0 --maxfail=1 -v                    # Stop after first failure, verbose"
+    echo "  $0 --tb=short -q                     # Short traceback, quiet output"
+    echo ""
+    echo "Common pytest options:"
+    echo "  -k EXPRESSION    # Run tests matching expression"
+    echo "  -v               # Verbose output"
+    echo "  -q               # Quiet output"
+    echo "  -x               # Stop after first failure"
+    echo "  --maxfail=N      # Stop after N failures"
+    echo "  --tb=short       # Short traceback format"
+    echo "  --disable-warnings # Disable warning summary"
+    echo ""
+    exit 0
+fi
 
 echo "🔗 Running Integration Tests (Database Required)"
 echo "==============================================="
@@ -12,6 +50,11 @@ echo "==============================================="
 # These tests always need containers - never run without them
 echo "🐳 Integration tests require Docker containers for database access"
 export ENVIRONMENT=test
+
+# Display what tests will be run
+if [[ -n "$PYTEST_ARGS" ]]; then
+    echo "📋 Running with parameters: $PYTEST_ARGS"
+fi
 
 # Function to check if containers are running and healthy
 check_containers() {
@@ -99,7 +142,7 @@ except Exception as e:
     echo "🔍 Running Integration Tests in Docker..."
     if ! docker compose exec -T web bash -c "
         cd /app &&
-        python -m pytest tests/integration/ -v --tb=short
+        python -m pytest tests/integration/ -v --tb=short $PYTEST_ARGS
     "; then
         echo "❌ Integration tests failed"
         echo "📋 Recent logs from web container:"
@@ -123,7 +166,7 @@ if check_containers; then
     echo "🔍 Running Integration Tests in existing Docker containers..."
     if ! docker compose exec -T web bash -c "
         cd /app &&
-        python -m pytest tests/integration/ -v --tb=short
+        python -m pytest tests/integration/ -v --tb=short $PYTEST_ARGS
     "; then
         echo "❌ Integration tests failed"
         exit 1
