@@ -21,6 +21,7 @@ from error_handling import (
 )
 from logging_config import init_logging, get_logger
 from init_database import auto_initialize_database
+from init_llm import auto_initialize_llm
 
 # Load environment variables
 load_dotenv()
@@ -61,6 +62,22 @@ def get_logic():
             except Exception as e:
                 logger.warning(f"Database auto-initialization failed: {e}")
                 # Continue anyway - the BudgetLogic will handle connection issues
+            
+            # Auto-initialize LLM if needed
+            logger.info("Checking if LLM needs initialization...")
+            try:
+                llm_model = auto_initialize_llm()
+                if llm_model:
+                    logger.info(f"LLM auto-initialized successfully with model: {llm_model}")
+                    # Set environment variable for other components
+                    os.environ['OLLAMA_MODEL'] = llm_model
+                    os.environ['LLM_ENABLED'] = 'true'
+                else:
+                    logger.info("LLM not available or initialization failed")
+                    os.environ['LLM_ENABLED'] = 'false'
+            except Exception as e:
+                logger.warning(f"LLM auto-initialization failed: {e}")
+                os.environ['LLM_ENABLED'] = 'false'
             
             app.logic_instance = BudgetLogic(connection_params)
         return app.logic_instance
@@ -1056,11 +1073,21 @@ def health_check():
         # Check LLM classifier status if available
         llm_status = "disabled"
         try:
-            from docker_llm_classifier import DockerLLMClassifier
-            llm_classifier = DockerLLMClassifier(logic) if logic else None
-            if llm_classifier:
-                llm_status_info = llm_classifier.get_status()
-                llm_status = "available" if llm_status_info['available'] else "unavailable"
+            # Check if LLM was auto-initialized during startup
+            if os.getenv('LLM_ENABLED', 'false').lower() == 'true':
+                model_name = os.getenv('OLLAMA_MODEL', '')
+                if model_name:
+                    llm_status = f"available ({model_name})"
+                else:
+                    llm_status = "available"
+            else:
+                # Try to check with DockerLLMClassifier as fallback
+                from classifiers.docker_llm_classifier import DockerLLMClassifier
+                llm_classifier = DockerLLMClassifier(logic) if logic else None
+                if llm_classifier and llm_classifier.available:
+                    llm_status = "available"
+                else:
+                    llm_status = "unavailable"
         except ImportError:
             llm_status = "not_installed"
         except Exception as e:
