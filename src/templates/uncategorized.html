@@ -488,8 +488,76 @@
     }
     
     function startAutoClassification() {
-        const modal = new bootstrap.Modal(document.getElementById('autoClassifyModal'));
-        modal.show();
+        // Start auto-classification task directly and redirect to monitoring
+        runAutoClassificationDirect();
+    }
+    
+    async function runAutoClassificationDirect() {
+        try {
+            console.log('Starting auto-classification request...');
+            
+            // Show loading state to user
+            showToast('Starting auto-classification task...', 'info');
+            
+            // Start the background task with default confidence threshold
+            const response = await fetch('/api/background-tasks/auto-classify', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    confidence_threshold: 0.7
+                }),
+                credentials: 'same-origin'  // Ensure cookies are sent
+            });
+            
+            console.log('Response status:', response.status);
+            console.log('Response URL:', response.url);
+            
+            // Check if we got redirected to login (status 200 but URL contains login)
+            if (response.status === 200 && response.url.includes('/login')) {
+                throw new Error('Authentication required. Please log in and try again.');
+            }
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`HTTP ${response.status}: ${errorText}`);
+            }
+            
+            // Check if response is JSON
+            const contentType = response.headers.get('content-type');
+            let data;
+            
+            if (contentType && contentType.includes('application/json')) {
+                data = await response.json();
+            } else {
+                const text = await response.text();
+                console.log('Non-JSON response:', text.substring(0, 200));
+                // If we got HTML, check if it's the login page
+                if (text.includes('<title>Budget App - Login</title>')) {
+                    throw new Error('Please log in to use auto-classification.');
+                }
+                throw new Error('Server returned unexpected response format.');
+            }
+            
+            console.log('Response data:', data);
+            
+            if (!data.success) {
+                throw new Error(data.error || 'Failed to start background task');
+            }
+            
+            // Show success message and redirect
+            showToast(`Auto-classification task started successfully! Processing ${data.total_transactions} transactions...`, 'success');
+            
+            // Redirect to background tasks page to monitor progress
+            setTimeout(() => {
+                window.location.href = '/background_tasks';
+            }, 2000);
+            
+        } catch (error) {
+            console.error('Auto-classification error:', error);
+            showToast('Failed to start auto-classification: ' + error.message, 'danger');
+        }
     }
     
     async function runAutoClassification() {
@@ -505,12 +573,12 @@
                 <div class="spinner-border spinner-border-sm me-3" role="status">
                     <span class="visually-hidden">Loading...</span>
                 </div>
-                <span>Running auto-classification...</span>
+                <span>Starting background task...</span>
             </div>
         `;
         
         try {
-            const response = await fetch('/api/auto-classify', {
+            const response = await fetch('/api/background-tasks/auto-classify', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -522,33 +590,36 @@
             
             const data = await response.json();
             
-            if (data.error) {
-                throw new Error(data.error);
+            if (!data.success) {
+                throw new Error(data.error || 'Failed to start background task');
             }
             
             statusDiv.innerHTML = `
                 <div class="alert alert-success">
                     <i class="bi bi-check-circle me-2"></i>
-                    <strong>Auto-classification complete!</strong>
+                    <strong>Background task started!</strong>
                     <br>
-                    Classified: ${data.classified} transactions<br>
-                    Suggestions: ${data.suggestions} transactions<br>
-                    Remaining uncategorized: ${data.remaining}
+                    Auto-classification is now running in the background for ${data.total_transactions} transactions.
+                    <br>
+                    <div class="mt-2">
+                        <a href="/background_tasks" class="btn btn-primary btn-sm">
+                            <i class="bi bi-gear me-1"></i>Monitor Progress
+                        </a>
+                    </div>
                 </div>
             `;
             
-            // Close modal after a delay
+            // Close modal after a delay and redirect
             setTimeout(() => {
-                bootstrap.Modal.getInstance(document.getElementById('autoClassifyModal')).hide();
-                loadTransactions(1); // Reload from first page
-            }, 3000);
+                window.location.href = '/background_tasks';
+            }, 2000);
             
         } catch (error) {
-            console.error('Auto-classification error:', error);
+            console.error('Background task error:', error);
             statusDiv.innerHTML = `
                 <div class="alert alert-danger">
                     <i class="bi bi-x-circle me-2"></i>
-                    Auto-classification failed: ${error.message}
+                    Failed to start background task: ${error.message}
                 </div>
             `;
         } finally {

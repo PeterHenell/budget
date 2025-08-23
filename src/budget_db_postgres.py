@@ -75,6 +75,11 @@ class BudgetDb:
         if self.conn:
             self.conn.close()
             self.conn = None
+            self.logger.debug("Database connection closed")
+
+    def get_cursor(self):
+        """Get a database cursor with context manager support"""
+        return self.conn.cursor()
 
     def __del__(self):
         """Cleanup on destruction"""

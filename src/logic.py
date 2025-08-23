@@ -261,8 +261,7 @@ class BudgetLogic:
             
             # Perform auto-classification
             classified_count, suggestions = engine.auto_classify_uncategorized(
-                confidence_threshold=confidence_threshold,
-                max_suggestions=len(df) * 2  # Allow processing all imported transactions
+                confidence_threshold=confidence_threshold
             )
             
             # Log results

@@ -66,11 +66,11 @@ class DatabaseInitializer:
                     SELECT COUNT(*) 
                     FROM information_schema.tables 
                     WHERE table_schema = 'public' 
-                    AND table_name IN ('categories', 'transactions', 'budgets', 'users')
+                    AND table_name IN ('categories', 'transactions', 'budgets', 'users', 'background_tasks')
                 """)
                 table_count = cur.fetchone()[0]
                 
-                if table_count < 4:
+                if table_count < 5:
                     return True
                 
                 # Check if we have default categories
@@ -158,6 +158,26 @@ class DatabaseInitializer:
                 )
             """)
             
+            # Create background_tasks table
+            print("  - Creating background_tasks table...")
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS background_tasks (
+                    id SERIAL PRIMARY KEY,
+                    task_type VARCHAR(100) NOT NULL,
+                    task_name VARCHAR(255) NOT NULL,
+                    status VARCHAR(50) DEFAULT 'pending',
+                    progress INTEGER DEFAULT 0,
+                    total INTEGER DEFAULT 0,
+                    current_item TEXT DEFAULT NULL,
+                    result_data JSONB DEFAULT NULL,
+                    error_message TEXT DEFAULT NULL,
+                    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    started_at TIMESTAMP DEFAULT NULL,
+                    completed_at TIMESTAMP DEFAULT NULL
+                )
+            """)
+            
             # Skip trigger creation to avoid hanging issues
             print("  - Skipping trigger creation (not required for basic functionality)")
             
@@ -184,7 +204,11 @@ class DatabaseInitializer:
                 ("idx_users_username", "users", "username"),
                 ("idx_users_active", "users", "is_active"),
                 ("idx_budgets_category_year", "budgets", "category_id, year"),
-                ("idx_categories_name", "categories", "LOWER(name)")
+                ("idx_categories_name", "categories", "LOWER(name)"),
+                ("idx_background_tasks_status", "background_tasks", "status"),
+                ("idx_background_tasks_user", "background_tasks", "user_id"),
+                ("idx_background_tasks_type", "background_tasks", "task_type"),
+                ("idx_background_tasks_created", "background_tasks", "created_at")
             ]
             
             for idx_name, table, columns in indexes:

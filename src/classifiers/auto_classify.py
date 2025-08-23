@@ -372,7 +372,7 @@ class AutoClassificationEngine:
         
         return unique_suggestions
     
-    def auto_classify_uncategorized(self, confidence_threshold=0.7, max_suggestions=100, progress_callback=None):
+    def auto_classify_uncategorized(self, confidence_threshold=0.7, max_suggestions=None, progress_callback=None):
         """
         Automatically classify uncategorized transactions, prioritizing LLM results
         Uses lower confidence threshold to leverage LLM capabilities
@@ -380,7 +380,7 @@ class AutoClassificationEngine:
         
         Args:
             confidence_threshold: Minimum confidence to auto-classify
-            max_suggestions: Maximum transactions to process
+            max_suggestions: Maximum transactions to process (None for unlimited)
             progress_callback: Function to call with progress updates (current, total, current_item)
         """
         uncategorized = self.logic.get_uncategorized_transactions(limit=max_suggestions)

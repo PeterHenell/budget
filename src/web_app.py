@@ -9,6 +9,7 @@ import tempfile
 import json
 from logic import BudgetLogic
 from classifiers import AutoClassificationEngine
+from background_tasks import BackgroundTaskManager, AutoClassificationTask
 import pandas as pd
 from werkzeug.utils import secure_filename
 from datetime import datetime
@@ -85,6 +86,17 @@ def get_logic():
         logger.error(f'Failed to initialize database connection: {e}')
         raise DatabaseError("Database connection failed", e)
 
+def get_background_task_manager():
+    """Get background task manager instance from app context (thread-safe)"""
+    try:
+        if not hasattr(app, 'task_manager_instance'):
+            logic = get_logic()  # This ensures database is initialized
+            app.task_manager_instance = BackgroundTaskManager(logic.db)
+        return app.task_manager_instance
+    except Exception as e:
+        logger.error(f'Failed to initialize background task manager: {e}')
+        raise DatabaseError("Background task manager initialization failed", e)
+
 # Ensure upload directory exists
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
@@ -97,6 +109,9 @@ def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if not session.get('logged_in') or not session.get('username'):
+            # Check if this is an API request
+            if request.path.startswith('/api/'):
+                return jsonify({'error': 'Authentication required'}), 401
             return redirect(url_for('login'))
         return f(*args, **kwargs)
     return decorated_function
@@ -255,6 +270,14 @@ def reports():
     categories = logic.get_categories()
     return render_template('reports.html', 
                          categories=categories,
+                         current_user=session.get('username'))
+
+@app.route('/background_tasks')
+@login_required
+@handle_route_errors('background_tasks.html')
+def background_tasks():
+    """Display background tasks page"""
+    return render_template('background_tasks.html',
                          current_user=session.get('username'))
 
 @app.route('/import_csv')
@@ -730,15 +753,13 @@ def api_auto_classify():
             return jsonify({'error': 'Database connection failed'}), 500
         data = request.get_json()
         confidence_threshold = float(data.get('confidence_threshold', 0.8))
-        max_suggestions = int(data.get('max_suggestions', 100))
         
         # Initialize the auto-classification engine
         engine = AutoClassificationEngine(logic)
         
         # Perform auto-classification
         classified_count, suggestions = engine.auto_classify_uncategorized(
-            confidence_threshold=confidence_threshold,
-            max_suggestions=max_suggestions
+            confidence_threshold=confidence_threshold
         )
         
         return jsonify({
@@ -750,89 +771,90 @@ def api_auto_classify():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/auto-classify/progress', methods=['POST'])
+# Background Task API Routes
+@app.route('/api/background-tasks', methods=['GET'])
 @login_required
-def api_auto_classify_progress():
-    """API endpoint for auto-classification with progress tracking"""
+def api_get_background_tasks():
+    """Get all background tasks for the current user"""
     try:
-        logic = get_logic()
-        if not logic:
-            return jsonify({'error': 'Database connection failed'}), 500
-            
-        # Start auto-classification with progress tracking
-        import uuid
-        progress_id = str(uuid.uuid4())
+        task_manager = get_background_task_manager()
         
-        # Store progress in session (in production, use Redis or database)
-        if 'progress_data' not in session:
-            session['progress_data'] = {}
+        # Get running task
+        running_task = task_manager.get_running_task()
         
-        session['progress_data'][progress_id] = {
-            'status': 'starting',
-            'progress': 0,
-            'total': 0,
-            'classified': 0,
-            'current_item': 'Initializing...',
-            'completed': False,
-            'error': None
-        }
+        # Get all tasks (without user_id filter for now)
+        tasks = task_manager.get_all_tasks()
         
-        # Define progress callback function
-        def progress_callback(current, total, current_item=None):
-            if progress_id in session.get('progress_data', {}):
-                session['progress_data'][progress_id].update({
-                    'status': 'running',
-                    'progress': current,
-                    'total': total,
-                    'current_item': current_item or f'Processing transaction {current + 1} of {total}',
-                    'completed': False
-                })
-                session.modified = True
-        
-        # Run classification with progress tracking
-        try:
-            classified_count, total_count = logic.auto_classify_uncategorized(
-                progress_callback=progress_callback
-            )
-            
-            # Update final status
-            session['progress_data'][progress_id].update({
-                'status': 'completed',
-                'progress': total_count,
-                'total': total_count,
-                'classified': classified_count,
-                'current_item': f'Completed! Classified {classified_count} of {total_count} transactions',
-                'completed': True,
-                'error': None
-            })
-            session.modified = True
-            
-        except Exception as e:
-            session['progress_data'][progress_id].update({
-                'status': 'error',
-                'error': str(e),
-                'completed': True
-            })
-            session.modified = True
-            
         return jsonify({
             'success': True,
-            'progress_id': progress_id
+            'running_task': running_task,
+            'tasks': tasks
         })
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/auto-classify/progress/<progress_id>', methods=['GET'])
+@app.route('/api/background-tasks/<int:task_id>', methods=['GET'])
 @login_required
-def api_auto_classify_progress_status(progress_id):
-    """Get the progress status for an auto-classification job"""
+def api_get_background_task(task_id):
+    """Get details of a specific background task"""
     try:
-        if 'progress_data' not in session or progress_id not in session['progress_data']:
-            return jsonify({'error': 'Progress ID not found'}), 404
-            
-        progress_data = session['progress_data'][progress_id]
-        return jsonify(progress_data)
+        task_manager = get_background_task_manager()
+        task = task_manager.get_task_status(task_id)
+        
+        if not task:
+            return jsonify({'error': 'Task not found'}), 404
+        
+        return jsonify(task)
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/background-tasks/auto-classify', methods=['POST'])
+@login_required
+def api_start_auto_classify_task():
+    """Start auto-classification as a background task"""
+    try:
+        task_manager = get_background_task_manager()
+        
+        # Check if any task is already running
+        if task_manager.is_task_running():
+            return jsonify({
+                'success': False,
+                'error': 'Another background task is already running'
+            }), 409
+        
+        logic = get_logic()
+        user_id = session.get('user_id', 1)  # Default to user 1 for now
+        
+        # Get uncategorized count more efficiently
+        total_count = logic.get_uncategorized_count()
+        
+        if total_count == 0:
+            return jsonify({
+                'success': False,
+                'error': 'No uncategorized transactions to classify'
+            }), 400
+        
+        # Create background task
+        task_id = task_manager.create_task(
+            task_type='auto_classify',
+            task_name=f'Auto-classify {total_count} transactions',
+            user_id=user_id,
+            total=total_count
+        )
+        
+        # Start the task
+        auto_task = AutoClassificationTask(logic.db, logic)
+        confidence_threshold = float(request.json.get('confidence_threshold', 0.7))
+        
+        task_manager.execute_task(task_id, auto_task.run, confidence_threshold)
+        
+        return jsonify({
+            'success': True,
+            'task_id': task_id,
+            'total_transactions': total_count
+        })
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
