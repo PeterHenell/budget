@@ -30,7 +30,7 @@ def test_imports():
         assert False, f"logic import failed: {e}"
         
     try:
-        from auto_classify import AutoClassificationEngine
+        from classifiers.auto_classify import AutoClassificationEngine
         print("  ✅ auto_classify imported successfully")
     except Exception as e:
         print(f"  ❌ auto_classify import failed: {e}")

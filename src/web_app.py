@@ -6,28 +6,44 @@ Modern web UI with left-side navigation menu and user authentication
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, session
 import os
 import tempfile
+import json
 from logic import BudgetLogic
 from classifiers import AutoClassificationEngine
 import pandas as pd
 from werkzeug.utils import secure_filename
-import json
 from datetime import datetime
 from dotenv import load_dotenv
 from functools import wraps
+from logging_config import init_logging, get_logger
 
 # Load environment variables
 load_dotenv()
 
+# Initialize logging
+logger = init_logging()
+
 app = Flask(__name__)
 app.secret_key = os.getenv('FLASK_SECRET_KEY', 'your-secret-key-change-this-in-production')
-
-# Global logic instance
-logic = None
 
 # Configure upload folder
 UPLOAD_FOLDER = 'uploads'
 ALLOWED_EXTENSIONS = {'csv'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+# Store logic instance in app context for thread safety
+def get_logic():
+    """Get logic instance from app context (thread-safe)"""
+    if not hasattr(app, 'logic_instance'):
+        # Initialize connection parameters from environment
+        connection_params = {
+            'host': os.getenv('POSTGRES_HOST', 'postgres'),
+            'port': int(os.getenv('POSTGRES_PORT', 5432)),
+            'database': os.getenv('POSTGRES_DB', 'budget_db'),
+            'user': os.getenv('POSTGRES_USER', 'budget_user'),
+            'password': os.getenv('POSTGRES_PASSWORD', 'budget_password_2025')
+        }
+        app.logic_instance = BudgetLogic(connection_params)
+    return app.logic_instance
 
 # Ensure upload directory exists
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -53,7 +69,10 @@ def admin_required(f):
             return redirect(url_for('login'))
         
         # Check if user is admin
-        if not init_logic():
+        try:
+            logic = get_logic()
+        except Exception as e:
+            logger.error(f'Database connection failed: {e}')
             flash('Database connection failed', 'error')
             return redirect(url_for('index'))
         
@@ -63,18 +82,6 @@ def admin_required(f):
         
         return f(*args, **kwargs)
     return decorated_function
-
-def init_logic():
-    """Initialize database connection"""
-    global logic
-    if not logic:
-        try:
-            logic = BudgetLogic()  # Uses environment variables for connection
-            return True
-        except Exception as e:
-            print(f"Failed to initialize database: {e}")
-            return False
-    return True
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -86,8 +93,11 @@ def login():
             flash('Please enter both username and password', 'error')
             return render_template('login.html')
         
-        # Initialize database connection to check credentials
-        if not init_logic():
+        # Get database connection 
+        try:
+            logic = get_logic()
+        except Exception as e:
+            logger.error(f'Database connection failed: {e}')
             flash('Database connection failed', 'error')
             return render_template('login.html')
         
@@ -120,7 +130,10 @@ def logout():
 @login_required
 def index():
     """Main dashboard page"""
-    if not init_logic():
+    try:
+        logic = get_logic()
+    except Exception as e:
+        logger.error(f'Database connection failed: {e}')
         flash('Database connection failed', 'error')
         return render_template('error.html', message='Database connection failed')
     
@@ -145,7 +158,8 @@ def index():
 @login_required
 def transactions():
     """Display all transactions"""
-    if not init_logic():
+    try:
+        logic = get_logic()
         flash('Database connection failed', 'error')
         return render_template('error.html', message='Database connection failed')
     
@@ -164,7 +178,8 @@ def transactions():
 @login_required
 def budgets():
     """Display budget management page"""
-    if not init_logic():
+    try:
+        logic = get_logic()
         flash('Database connection failed', 'error')
         return render_template('error.html', message='Database connection failed')
     
@@ -183,7 +198,8 @@ def budgets():
 @login_required
 def reports():
     """Display reports page"""
-    if not init_logic():
+    try:
+        logic = get_logic()
         flash('Database connection failed', 'error')
         return render_template('error.html', message='Database connection failed')
     
@@ -206,7 +222,8 @@ def import_csv():
 @login_required
 def uncategorized():
     """Display uncategorized transactions"""
-    if not init_logic():
+    try:
+        logic = get_logic()
         flash('Database connection failed', 'error')
         return render_template('error.html', message='Database connection failed')
     
@@ -226,7 +243,8 @@ def uncategorized():
 @login_required
 def categorize_transaction():
     """API endpoint to categorize a transaction"""
-    if not init_logic():
+    try:
+        logic = get_logic()
         return jsonify({'error': 'Database connection failed'}), 500
     
     try:
@@ -250,7 +268,8 @@ def categorize_transaction():
 @login_required
 def set_budget():
     """API endpoint to set budget for category and year"""
-    if not init_logic():
+    try:
+        logic = get_logic()
         return jsonify({'error': 'Database connection failed'}), 500
     
     try:
@@ -275,7 +294,8 @@ def set_budget():
 @login_required
 def monthly_report(year, month):
     """API endpoint for monthly spending report"""
-    if not init_logic():
+    try:
+        logic = get_logic()
         return jsonify({'error': 'Database connection failed'}), 500
     
     try:
@@ -288,7 +308,8 @@ def monthly_report(year, month):
 @login_required
 def yearly_report(year):
     """API endpoint for yearly spending report"""
-    if not init_logic():
+    try:
+        logic = get_logic()
         return jsonify({'error': 'Database connection failed'}), 500
     
     try:
@@ -301,7 +322,8 @@ def yearly_report(year):
 @login_required
 def upload_file():
     """Handle CSV file upload and import"""
-    if not init_logic():
+    try:
+        logic = get_logic()
         flash('Database connection failed', 'error')
         return redirect(url_for('import_csv'))
     
@@ -341,7 +363,8 @@ def upload_file():
 @login_required
 def api_categories():
     """API endpoint to get all categories"""
-    if not init_logic():
+    try:
+        logic = get_logic()
         return jsonify({'error': 'Database connection failed'}), 500
     
     try:
@@ -354,7 +377,8 @@ def api_categories():
 @login_required
 def api_create_category():
     """API endpoint to create a new category"""
-    if not init_logic():
+    try:
+        logic = get_logic()
         return jsonify({'error': 'Database connection failed'}), 500
     
     try:
@@ -375,7 +399,8 @@ def api_create_category():
 @login_required
 def api_delete_category(category_name):
     """API endpoint to delete a category"""
-    if not init_logic():
+    try:
+        logic = get_logic()
         return jsonify({'error': 'Database connection failed'}), 500
     
     try:
@@ -390,7 +415,8 @@ def api_delete_category(category_name):
 @login_required
 def api_transactions():
     """API endpoint to get transactions with pagination"""
-    if not init_logic():
+    try:
+        logic = get_logic()
         return jsonify({'error': 'Database connection failed'}), 500
     
     try:
@@ -418,7 +444,8 @@ def api_transactions():
 @login_required
 def api_uncategorized():
     """API endpoint to get uncategorized transactions"""
-    if not init_logic():
+    try:
+        logic = get_logic()
         return jsonify({'error': 'Database connection failed'}), 500
     
     try:
@@ -461,7 +488,8 @@ def api_uncategorized():
 @login_required
 def api_budgets(year):
     """API endpoint to get budgets for a specific year"""
-    if not init_logic():
+    try:
+        logic = get_logic()
         return jsonify({'error': 'Database connection failed'}), 500
     
     try:
@@ -489,7 +517,8 @@ def api_budgets(year):
 @login_required  
 def api_set_budget():
     """API endpoint to set a single budget"""
-    if not init_logic():
+    try:
+        logic = get_logic()
         return jsonify({'error': 'Database connection failed'}), 500
     
     try:
@@ -510,7 +539,8 @@ def api_set_budget():
 @login_required
 def api_set_budget_for_year(year):
     """API endpoint to set a budget for a specific year"""
-    if not init_logic():
+    try:
+        logic = get_logic()
         return jsonify({'error': 'Database connection failed'}), 500
     
     try:
@@ -564,7 +594,8 @@ def api_monthly_report(year, month):
 @login_required
 def api_classify():
     """API endpoint to classify a single transaction"""
-    if not init_logic():
+    try:
+        logic = get_logic()
         return jsonify({'error': 'Database connection failed'}), 500
     
     try:
@@ -589,7 +620,8 @@ def api_classify():
 @login_required
 def api_classify_batch():
     """API endpoint to classify multiple transactions"""
-    if not init_logic():
+    try:
+        logic = get_logic()
         return jsonify({'error': 'Database connection failed'}), 500
     
     try:
@@ -621,7 +653,8 @@ def api_classify_batch():
 @login_required
 def api_auto_classify():
     """API endpoint for auto-classification"""
-    if not init_logic():
+    try:
+        logic = get_logic()
         return jsonify({'error': 'Database connection failed'}), 500
     
     try:
@@ -651,7 +684,8 @@ def api_auto_classify():
 @login_required
 def api_delete_transaction(transaction_id):
     """API endpoint to delete a single transaction"""
-    if not init_logic():
+    try:
+        logic = get_logic()
         return jsonify({'error': 'Database connection failed'}), 500
     
     try:
@@ -664,7 +698,8 @@ def api_delete_transaction(transaction_id):
 @login_required
 def api_delete_transactions_bulk():
     """API endpoint to delete multiple transactions"""
-    if not init_logic():
+    try:
+        logic = get_logic()
         return jsonify({'error': 'Database connection failed'}), 500
     
     try:
@@ -690,7 +725,8 @@ def api_delete_transactions_bulk():
 @login_required
 def api_import():
     """API endpoint for CSV import"""
-    if not init_logic():
+    try:
+        logic = get_logic()
         return jsonify({'error': 'Database connection failed'}), 500
     
     if 'file' not in request.files:
@@ -728,7 +764,8 @@ def api_import():
 def manage_users():
     """Admin page for managing users"""
     try:
-        if not init_logic():
+        try:
+        logic = get_logic()
             flash('Database connection failed', 'error')
             return redirect(url_for('index'))
         
@@ -743,7 +780,8 @@ def manage_users():
 def update_user_role_api(username):
     """API endpoint to update user role"""
     try:
-        if not init_logic():
+        try:
+        logic = get_logic()
             return jsonify({'error': 'Database connection failed'}), 500
             
         data = request.json
@@ -770,7 +808,8 @@ def update_user_role_api(username):
 def toggle_user_status_api(username):
     """API endpoint to toggle user active status"""
     try:
-        if not init_logic():
+        try:
+        logic = get_logic()
             return jsonify({'error': 'Database connection failed'}), 500
             
         # Prevent admin from deactivating themselves
@@ -791,7 +830,8 @@ def toggle_user_status_api(username):
 def delete_user_api(username):
     """API endpoint to delete a user"""
     try:
-        if not init_logic():
+        try:
+        logic = get_logic()
             return jsonify({'error': 'Database connection failed'}), 500
             
         # Prevent admin from deleting themselves

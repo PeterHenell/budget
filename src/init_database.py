@@ -154,6 +154,7 @@ class DatabaseInitializer:
             indexes = [
                 ("idx_transactions_date", "transactions", "date"),
                 ("idx_transactions_category", "transactions", "category_id"),
+                ("idx_transactions_verification", "transactions", "verifikationsnummer"),
                 ("idx_transactions_year_month", "transactions", "year, month"),
                 ("idx_transactions_year", "transactions", "year"),
                 ("idx_transactions_description", "transactions", "LOWER(description)"),
@@ -205,8 +206,19 @@ class DatabaseInitializer:
         except psycopg2.Error as e:
             raise Exception(f"Failed to create default categories: {e}")
     
-    def create_admin_user(self, username: str = "admin", password: str = "admin"):
-        """Create default admin user"""
+    def create_admin_user(self, username: str = "admin", password: str = None):
+        """Create admin user with secure password
+        
+        Args:
+            username: Admin username (default: "admin")  
+            password: Admin password (REQUIRED - no default for security)
+        
+        Raises:
+            ValueError: If password is not provided
+        """
+        if password is None:
+            raise ValueError("Password is required for security. No default password allowed.")
+            
         print("Creating admin user...")
         
         try:
@@ -294,7 +306,14 @@ class DatabaseInitializer:
             self.insert_default_categories()
             
             if not skip_admin:
-                self.create_admin_user()
+                # Generate a secure password for initial admin user
+                import secrets
+                import string
+                alphabet = string.ascii_letters + string.digits
+                admin_password = ''.join(secrets.choice(alphabet) for i in range(12))
+                self.create_admin_user(password=admin_password)
+                print(f"🔐 Admin user created with password: {admin_password}")
+                print("⚠️  IMPORTANT: Save this password securely and change it after first login!")
             
             print("=" * 50)
             print("✅ Database initialization completed successfully!")

@@ -7,6 +7,7 @@ import psycopg2
 import psycopg2.extras
 import os
 from typing import List, Dict, Optional, Tuple
+from logging_config import get_logger
 
 
 class BudgetDb:
@@ -14,11 +15,11 @@ class BudgetDb:
     
     def __init__(self, connection_params: dict = None, auto_init: bool = True):
         """
-        Initialize database connection
+        Initialize database connection with optional parameters
         connection_params: dict with keys: host, database, user, password, port
-        If None, reads from environment variables
-        auto_init: If True, check and initialize database if needed
+        auto_init: whether to connect immediately and initialize tables
         """
+        self.logger = get_logger(f'{__name__}.BudgetDb')
         if connection_params is None:
             connection_params = {
                 'host': os.getenv('POSTGRES_HOST', 'localhost'),
@@ -61,12 +62,12 @@ class BudgetDb:
             tables_exist = c.fetchone()[0]
             
             if not tables_exist:
-                print("⚠️  Database tables not found!")
-                print("   Please run: python src/init_database.py")
-                print("   Or use: from src.init_database import DatabaseInitializer")
+                self.logger.warning("Database tables not found!")
+                self.logger.info("Please run: python src/init_database.py")
+                self.logger.info("Or use: from src.init_database import DatabaseInitializer")
                 
         except psycopg2.Error as e:
-            print(f"Warning: Could not check database initialization: {e}")
+            self.logger.warning(f"Could not check database initialization: {e}")
 
     def close(self):
         """Close the database connection"""
@@ -273,6 +274,24 @@ class BudgetDb:
         
         c.execute(query, params)
         return c.fetchall()
+
+    def get_transaction_by_verification_number(self, verifikationsnummer: str) -> Optional[Dict]:
+        """Get a single transaction by verification number for efficient lookup"""
+        c = self.conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        c.execute("""
+            SELECT t.id, t.verifikationsnummer, t.date, t.description, t.amount, 
+                   t.year, t.month, t.category_id, c.name as category_name,
+                   t.classification_confidence, t.classification_method,
+                   t.created_at, t.updated_at
+            FROM transactions t
+            LEFT JOIN categories c ON t.category_id = c.id
+            WHERE t.verifikationsnummer = %s
+        """, (verifikationsnummer,))
+        
+        row = c.fetchone()
+        if row:
+            return dict(row)
+        return None
 
     def classify_transaction(self, transaction_id: int, category_name: str, 
                            confidence: float = None, method: str = "Manual"):

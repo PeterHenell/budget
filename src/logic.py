@@ -1,6 +1,7 @@
 import os
 import pandas as pd
 from budget_db_postgres import BudgetDb
+from logging_config import get_logger
 
 class BudgetLogic:
     """Business logic layer for the Budget App"""
@@ -8,6 +9,7 @@ class BudgetLogic:
     def __init__(self, connection_params=None):
         """Initialize with database connection parameters or use environment variables"""
         self.db = BudgetDb(connection_params)
+        self.logger = get_logger(f'{__name__}.BudgetLogic')
         
     def close(self):
         """Close the database connection"""
@@ -74,18 +76,13 @@ class BudgetLogic:
 
     def classify_transaction(self, verifikationsnummer, category_name, confidence=None, classification_method=None):
         """Classify a transaction by verification number (for backward compatibility)"""
-        # First find the transaction ID by verification number
-        transactions = self.db.get_transactions()
-        transaction_id = None
-        for txn in transactions:
-            if txn.get('verifikationsnummer') == verifikationsnummer:
-                transaction_id = txn['id']
-                break
+        # Efficient lookup using database index
+        transaction = self.db.get_transaction_by_verification_number(verifikationsnummer)
         
-        if transaction_id is None:
+        if transaction is None:
             raise ValueError(f"Transaction with verification number '{verifikationsnummer}' not found")
         
-        return self.db.classify_transaction(transaction_id, category_name, confidence, classification_method)
+        return self.db.classify_transaction(transaction['id'], category_name, confidence, classification_method)
 
     def reclassify_transaction(self, transaction_id, category_name, confidence=None, classification_method=None):
         """Reclassify a transaction by transaction ID (direct database operation)"""
@@ -185,7 +182,7 @@ class BudgetLogic:
         # Check if auto-classification is enabled
         auto_classify_enabled = os.getenv('AUTO_CLASSIFY_ON_IMPORT', 'true').lower() == 'true'
         if not auto_classify_enabled:
-            print("ℹ️  Automatic classification disabled by configuration")
+            self.logger.info("Automatic classification disabled by configuration")
             return
             
         try:
@@ -205,14 +202,14 @@ class BudgetLogic:
             )
             
             if classified_count > 0:
-                print(f"✅ Auto-classified {classified_count} transactions using LLM-supported classification")
+                self.logger.info(f"Auto-classified {classified_count} transactions using LLM-supported classification")
             
             # Log suggestions for review if any
             if suggestions:
-                print(f"ℹ️  {len(suggestions)} transactions have moderate confidence suggestions for manual review")
+                self.logger.info(f"{len(suggestions)} transactions have moderate confidence suggestions for manual review")
                 
         except Exception as e:
-            print(f"⚠️  Auto-classification failed: {e}")
+            self.logger.warning(f"Auto-classification failed: {e}")
             # Don't fail the import if auto-classification fails
 
     # === Reporting Functionality ===
