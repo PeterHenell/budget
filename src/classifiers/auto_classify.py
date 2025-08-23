@@ -372,21 +372,31 @@ class AutoClassificationEngine:
         
         return unique_suggestions
     
-    def auto_classify_uncategorized(self, confidence_threshold=0.7, max_suggestions=100):
+    def auto_classify_uncategorized(self, confidence_threshold=0.7, max_suggestions=100, progress_callback=None):
         """
         Automatically classify uncategorized transactions, prioritizing LLM results
         Uses lower confidence threshold to leverage LLM capabilities
         Returns (classified_count, suggestions_for_review)
+        
+        Args:
+            confidence_threshold: Minimum confidence to auto-classify
+            max_suggestions: Maximum transactions to process
+            progress_callback: Function to call with progress updates (current, total, current_item)
         """
         uncategorized = self.logic.get_uncategorized_transactions(limit=max_suggestions)
+        total_transactions = len(uncategorized)
         
         classified_count = 0
         suggestions_for_review = []
         llm_classifications = 0
         traditional_classifications = 0
         
-        for tx in uncategorized:
+        for i, tx in enumerate(uncategorized):
             tx_id, verif_num, date, description, amount, year, month = tx
+            
+            # Call progress callback if provided
+            if progress_callback:
+                progress_callback(i, total_transactions, description[:50] + "..." if len(description) > 50 else description)
             
             transaction_data = {
                 'description': description,
@@ -450,6 +460,11 @@ class AutoClassificationEngine:
             self.logger.info(f"   Total Auto-classified: {classified_count}")
             if suggestions_for_review:
                 self.logger.info(f"   Requiring Review: {len(suggestions_for_review)}")
+        
+        # Final progress callback
+        if progress_callback:
+            progress_callback(total_transactions, total_transactions, 
+                            f"Completed! Classified {classified_count} transactions")
         
         return classified_count, suggestions_for_review
 

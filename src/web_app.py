@@ -759,10 +759,6 @@ def api_auto_classify_progress():
         if not logic:
             return jsonify({'error': 'Database connection failed'}), 500
             
-        data = request.get_json()
-        confidence_threshold = float(data.get('confidence_threshold', 0.8))
-        max_suggestions = int(data.get('max_suggestions', 1000))
-        
         # Start auto-classification with progress tracking
         import uuid
         progress_id = str(uuid.uuid4())
@@ -781,82 +777,35 @@ def api_auto_classify_progress():
             'error': None
         }
         
-        # Run classification in background (simplified version)
-        try:
-            # Get uncategorized transactions
-            uncategorized = logic.get_uncategorized_transactions()
-            total_transactions = len(uncategorized)
-            
-            session['progress_data'][progress_id].update({
-                'status': 'running',
-                'total': total_transactions,
-                'current_item': f'Processing {total_transactions} transactions...'
-            })
-            
-            if total_transactions == 0:
+        # Define progress callback function
+        def progress_callback(current, total, current_item=None):
+            if progress_id in session.get('progress_data', {}):
                 session['progress_data'][progress_id].update({
-                    'status': 'completed',
-                    'progress': 100,
-                    'completed': True,
-                    'current_item': 'No transactions to classify'
-                })
-                return jsonify({
-                    'progress_id': progress_id,
-                    'classified_count': 0,
-                    'total_count': 0
-                })
-            
-            # Initialize classification engine
-            engine = AutoClassificationEngine(logic)
-            classified_count = 0
-            
-            # Process transactions with progress updates
-            for i, transaction in enumerate(uncategorized):
-                # Update progress
-                progress_percent = int((i / total_transactions) * 100)
-                session['progress_data'][progress_id].update({
-                    'progress': progress_percent,
-                    'current_item': f'Classifying: {transaction[3][:50]}...'  # description
+                    'status': 'running',
+                    'progress': current,
+                    'total': total,
+                    'current_item': current_item or f'Processing transaction {current + 1} of {total}',
+                    'completed': False
                 })
                 session.modified = True
-                
-                # Try to classify this transaction
-                tx_data = {
-                    'description': transaction[3],  # description
-                    'amount': float(transaction[4]),  # amount
-                    'date': transaction[2],  # date
-                    'year': transaction[5],  # year
-                    'month': transaction[6]  # month
-                }
-                
-                suggestion = engine.classify_transaction(tx_data)
-                if suggestion and suggestion['confidence'] >= confidence_threshold:
-                    # Apply the classification
-                    success = logic.reclassify_transaction(
-                        transaction[0],  # transaction_id
-                        suggestion['category'],
-                        confidence=suggestion['confidence'],
-                        classification_method=suggestion.get('method', 'auto')
-                    )
-                    if success:
-                        classified_count += 1
+        
+        # Run classification with progress tracking
+        try:
+            classified_count, total_count = logic.auto_classify_uncategorized(
+                progress_callback=progress_callback
+            )
             
-            # Mark as completed
+            # Update final status
             session['progress_data'][progress_id].update({
                 'status': 'completed',
-                'progress': 100,
+                'progress': total_count,
+                'total': total_count,
                 'classified': classified_count,
+                'current_item': f'Completed! Classified {classified_count} of {total_count} transactions',
                 'completed': True,
-                'current_item': f'Completed! Classified {classified_count} transactions'
+                'error': None
             })
             session.modified = True
-            
-            return jsonify({
-                'success': True,
-                'progress_id': progress_id,
-                'classified_count': classified_count,
-                'total_count': total_transactions
-            })
             
         except Exception as e:
             session['progress_data'][progress_id].update({
@@ -865,8 +814,12 @@ def api_auto_classify_progress():
                 'completed': True
             })
             session.modified = True
-            raise
             
+        return jsonify({
+            'success': True,
+            'progress_id': progress_id
+        })
+        
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

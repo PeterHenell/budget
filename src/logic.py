@@ -103,8 +103,8 @@ class BudgetLogic:
 
     # === CSV Import Functionality ===
 
-    def import_csv(self, csv_path, csv_encoding='utf-8'):
-        """Import transactions from CSV file with automatic classification"""
+    def import_csv(self, csv_path, csv_encoding='utf-8', auto_classify=False):
+        """Import transactions from CSV file with optional automatic classification"""
         try:
             # Step 1: Read and parse CSV file
             df = self._read_csv_with_fallback(csv_path, csv_encoding)
@@ -121,8 +121,9 @@ class BudgetLogic:
             # Step 5: Import to database
             self.db.import_transactions_bulk(df, "Uncategorized")
             
-            # Step 6: Auto-classify imported transactions
-            self._auto_classify_new_transactions(df)
+            # Step 6: Auto-classify imported transactions (only if explicitly requested)
+            if auto_classify:
+                self._auto_classify_new_transactions(df)
             
             self.logger.info(f"Successfully imported {len(df)} transactions from {csv_path}")
             return len(df)
@@ -270,6 +271,41 @@ class BudgetLogic:
         except Exception as e:
             self.logger.warning(f"Auto-classification failed: {e}")
             # Don't fail the import if auto-classification fails
+
+    def auto_classify_uncategorized(self, progress_callback=None):
+        """
+        Manually trigger auto-classification of uncategorized transactions
+        Returns (classified_count, total_count)
+        """
+        try:
+            # Get classification parameters
+            engine = self._initialize_classification_engine()
+            confidence_threshold = self._get_confidence_threshold()
+            
+            # Get uncategorized transactions for progress tracking
+            uncategorized = self.get_uncategorized_transactions()
+            total_count = len(uncategorized)
+            
+            if total_count == 0:
+                self.logger.info("No uncategorized transactions found")
+                return 0, 0
+            
+            self.logger.info(f"Starting auto-classification of {total_count} uncategorized transactions")
+            
+            # Perform auto-classification with progress callback
+            classified_count, suggestions = engine.auto_classify_uncategorized(
+                confidence_threshold=confidence_threshold,
+                progress_callback=progress_callback
+            )
+            
+            # Log results
+            self._log_classification_results(classified_count, suggestions)
+            
+            return classified_count, total_count
+                
+        except Exception as e:
+            self.logger.error(f"Manual auto-classification failed: {e}")
+            raise
 
     def _is_auto_classification_enabled(self):
         """Check if automatic classification is enabled via configuration"""
