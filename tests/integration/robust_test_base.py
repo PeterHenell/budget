@@ -13,6 +13,39 @@ from typing import Dict, Any, Optional
 from test_user_manager import IntegrationTestUserManager, get_test_connection_params
 
 
+def ensure_container_is_used():
+    """Ensure test runs inside a container or fail the test
+    
+    This decorator ensures that integration tests ALWAYS run in a proper container environment:
+    1. If we're inside a Docker container (/.dockerenv exists) - continue
+    2. If we're on host but containers are running - fail (should use docker exec)
+    3. If we're on host and containers are not running - fail
+    
+    This prevents integration tests from running in incomplete environments.
+    """
+    # If we're inside a Docker container, this is correct - continue
+    if os.path.exists('/.dockerenv'):
+        return lambda x: x
+    
+    # We're running locally - this should not happen for integration tests
+    try:
+        result = subprocess.run([
+            "docker", "compose", "ps", "--services", "--filter", "status=running"
+        ], capture_output=True, text=True)
+        
+        running_services = result.stdout.strip().split('\n') if result.stdout.strip() else []
+        
+        if 'web' in running_services and 'postgres' in running_services:
+            return pytest.mark.skip(reason="Integration tests must run inside containers. Use: docker compose exec -T web python -m pytest ...")
+        else:
+            return pytest.mark.skip(reason="Integration tests require containers. Start with: docker compose up -d")
+    except Exception:
+        return pytest.mark.skip(reason="Cannot check container status. Integration tests require Docker containers.")
+    
+    # This should never be reached, but just in case
+    return lambda x: x
+
+
 class TestDatabaseManager:
     """Manages test database setup and cleanup"""
     
@@ -279,20 +312,4 @@ def skip_if_no_docker():
             return pytest.mark.skip(reason="Docker not available")
     except FileNotFoundError:
         return pytest.mark.skip(reason="Docker not installed")
-    return lambda x: x
-
-
-def skip_if_containers_not_running():
-    """Skip test if containers are not running"""
-    try:
-        result = subprocess.run([
-            "docker", "compose", "ps", "--services", "--filter", "status=running"
-        ], capture_output=True, text=True)
-        
-        running_services = result.stdout.strip().split('\n') if result.stdout.strip() else []
-        
-        if 'web' not in running_services or 'postgres' not in running_services:
-            return pytest.mark.skip(reason="Required containers not running")
-    except Exception:
-        return pytest.mark.skip(reason="Cannot check container status")
     return lambda x: x

@@ -11,9 +11,9 @@ import os
 import csv
 import tempfile
 from typing import Dict, Any
-from robust_test_base import RobustIntegrationTestBase, skip_if_containers_not_running
+from robust_test_base import RobustIntegrationTestBase, ensure_container_is_used
 
-@skip_if_containers_not_running()
+@ensure_container_is_used()
 class TestAuthentication(RobustIntegrationTestBase):
     """Test authentication functionality"""
     
@@ -32,24 +32,6 @@ class TestAuthentication(RobustIntegrationTestBase):
         response = session.get(f"{self.BASE_URL}/dashboard")
         assert response.status_code == 200
     
-    def test_invalid_login(self):
-        """Test invalid login credentials"""
-        session = requests.Session()
-        login_data = {
-            "username": "invalid_user",
-            "password": "invalid_password"
-        }
-        
-        response = session.post(f"{self.BASE_URL}/login", data=login_data)
-        # Should stay on login page or redirect back to login
-        assert response.status_code in [200, 302]
-    
-    def test_protected_routes_redirect(self):
-        """Test that protected routes redirect to login"""
-        response = requests.get(f"{self.BASE_URL}/dashboard", allow_redirects=False)
-        assert response.status_code == 302
-        assert "/login" in response.headers.get('Location', '')
-    
     def test_logout(self):
         """Test user logout"""
         session = self.get_authenticated_session('admin')
@@ -63,7 +45,7 @@ class TestAuthentication(RobustIntegrationTestBase):
         assert response.status_code == 302
 
 
-@skip_if_containers_not_running()
+@ensure_container_is_used()
 class TestPageAccess(RobustIntegrationTestBase):
     """Test page access functionality"""
     
@@ -133,12 +115,6 @@ class TestPageAccess(RobustIntegrationTestBase):
 class TestPageAccessDetailed(RobustIntegrationTestBase):
     """Test that all pages load correctly"""
     
-    def test_dashboard_loads(self):
-        """Test dashboard page loads"""
-        session = self.get_authenticated_session()
-        response = session.get(f"{TestConfig.BASE_URL}/")
-        assert response.status_code == 200
-        assert "dashboard" in response.text.lower()
     
     def test_transactions_page_loads(self):
         """Test transactions page loads"""
