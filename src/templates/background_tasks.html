@@ -141,29 +141,13 @@ function formatDateTime(dateString) {
 
 function getStatusBadge(status) {
     const badges = {
-        'pending': 'badge-secondary',
-        'running': 'badge-info',
-        'completed': 'badge-success',
-        'failed': 'badge-danger'
+        'pending': 'bg-secondary',
+        'running': 'bg-info',
+        'completed': 'bg-success',
+        'failed': 'bg-danger'
     };
-    const badgeClass = badges[status] || 'badge-secondary';
+    const badgeClass = badges[status] || 'bg-secondary';
     return `<span class="badge ${badgeClass}">${status}</span>`;
-}
-
-function getProgressBar(progress, total) {
-    if (total === 0) return '-';
-    const percentage = Math.round((progress / total) * 100);
-    const progressClass = percentage === 100 ? 'bg-success' : 'bg-primary';
-    
-    return `
-        <div class="progress" style="height: 20px;">
-            <div class="progress-bar ${progressClass}" role="progressbar" 
-                 style="width: ${percentage}%" 
-                 aria-valuenow="${progress}" aria-valuemin="0" aria-valuemax="${total}">
-                ${percentage}%
-            </div>
-        </div>
-    `;
 }
 
 function showTaskDetails(taskId) {
@@ -250,7 +234,12 @@ function refreshTasks() {
                     <div class="col-md-8">
                         <h6>${runningTask.task_name}</h6>
                         <p class="mb-2">${runningTask.current_item || 'Processing...'}</p>
-                        ${getProgressBar(runningTask.progress, 100)}
+                        <div class="progress mb-2" style="height: 25px;">
+                            <div class="progress-bar bg-primary progress-bar-striped progress-bar-animated" 
+                                 style="width: ${Math.round((runningTask.progress / runningTask.total) * 100)}%">
+                                ${runningTask.progress}/${runningTask.total} (${Math.round((runningTask.progress / runningTask.total) * 100)}%)
+                            </div>
+                        </div>
                     </div>
                     <div class="col-md-4 text-right">
                         <small class="text-muted">Started: ${formatDateTime(runningTask.started_at)}</small>
@@ -273,7 +262,7 @@ function refreshTasks() {
                 <td>${task.task_name}</td>
                 <td>${task.task_type}</td>
                 <td>${getStatusBadge(task.status)}</td>
-                <td>${task.total > 0 ? getProgressBar(task.progress, task.total) : '-'}</td>
+                <td>${task.progress}/${task.total}</td>
                 <td>${formatDateTime(task.created_at)}</td>
                 <td>${formatDuration(task.started_at, task.completed_at)}</td>
                 <td>
