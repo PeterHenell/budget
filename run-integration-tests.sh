@@ -17,6 +17,7 @@ else
     echo "🐳 Running on host - will use Docker container for tests"
     DOCKER_MODE=false
 fi
+export ENVIRONMENT=test
 
 # Function to run tests in Docker
 run_in_docker() {

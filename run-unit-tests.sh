@@ -21,6 +21,9 @@ if [[ "$VIRTUAL_ENV" == "" ]]; then
     fi
 fi
 
+
+export ENVIRONMENT=test
+
 # Install dependencies if needed
 echo "📦 Checking dependencies..."
 pip install -q -r src/requirements.txt
