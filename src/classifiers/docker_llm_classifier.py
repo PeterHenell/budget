@@ -8,7 +8,7 @@ import json
 import time
 import requests
 from typing import Tuple, Optional, List, Dict
-from auto_classify import TransactionClassifier
+from .auto_classify import TransactionClassifier
 
 
 class DockerLLMClassifier(TransactionClassifier):

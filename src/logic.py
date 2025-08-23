@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 from budget_db_postgres import BudgetDb
 
@@ -173,7 +174,46 @@ class BudgetLogic:
         # Import to database
         self.db.import_transactions_bulk(df, "Uncategorized")
         
+        # Auto-classify imported transactions using LLM-supported classification
+        self._auto_classify_new_transactions(df)
+        
         return len(df)
+    
+    def _auto_classify_new_transactions(self, df):
+        """Automatically classify newly imported transactions using LLM-supported classification"""
+        
+        # Check if auto-classification is enabled
+        auto_classify_enabled = os.getenv('AUTO_CLASSIFY_ON_IMPORT', 'true').lower() == 'true'
+        if not auto_classify_enabled:
+            print("ℹ️  Automatic classification disabled by configuration")
+            return
+            
+        try:
+            # Import here to avoid circular imports
+            from classifiers import AutoClassificationEngine
+            
+            # Initialize the auto-classification engine (includes LLM classifiers)
+            engine = AutoClassificationEngine(self)
+            
+            # Get confidence threshold from environment
+            confidence_threshold = float(os.getenv('AUTO_CLASSIFY_CONFIDENCE_THRESHOLD', '0.75'))
+            
+            # Auto-classify imported transactions
+            classified_count, suggestions = engine.auto_classify_uncategorized(
+                confidence_threshold=confidence_threshold,
+                max_suggestions=len(df) * 2  # Allow processing all imported transactions
+            )
+            
+            if classified_count > 0:
+                print(f"✅ Auto-classified {classified_count} transactions using LLM-supported classification")
+            
+            # Log suggestions for review if any
+            if suggestions:
+                print(f"ℹ️  {len(suggestions)} transactions have moderate confidence suggestions for manual review")
+                
+        except Exception as e:
+            print(f"⚠️  Auto-classification failed: {e}")
+            # Don't fail the import if auto-classification fails
 
     # === Reporting Functionality ===
     

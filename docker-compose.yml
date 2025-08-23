@@ -60,6 +60,10 @@ services:
       OLLAMA_MODEL: tinyllama:1.1b
       LLM_ENABLED: "true"
       LLM_CONFIDENCE_THRESHOLD: "0.6"
+      # Auto-classification Configuration
+      AUTO_CLASSIFY_ON_IMPORT: "true"           # Enable automatic classification during CSV import
+      AUTO_CLASSIFY_CONFIDENCE_THRESHOLD: "0.75"  # Confidence threshold for automatic classification
+      LLM_PRIORITY: "true"                      # Prioritize LLM classifiers over traditional ones
     ports:
       - "5000:5000"
     volumes:

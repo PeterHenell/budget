@@ -7,7 +7,7 @@ from flask import Flask, render_template, request, jsonify, redirect, url_for, f
 import os
 import tempfile
 from logic import BudgetLogic
-from auto_classify import AutoClassificationEngine
+from classifiers import AutoClassificationEngine
 import pandas as pd
 from werkzeug.utils import secure_filename
 import json

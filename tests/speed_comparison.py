@@ -34,7 +34,9 @@ def speed_comparison_test():
     # Test 1: Rule-based only
     print("\n1️⃣  Testing Rule-Based Classifier (Baseline)")
     try:
-        from auto_classify import RuleBasedClassifier
+        import sys
+        sys.path.append('../src')
+        from classifiers import RuleBasedClassifier
         rule_classifier = RuleBasedClassifier(logic)
         
         start_time = time.time()
@@ -61,7 +63,7 @@ def speed_comparison_test():
     # Test 2: SuperFast Classifier  
     print("\n2️⃣  Testing SuperFast Classifier (Rule + Smart LLM)")
     try:
-        from super_fast_classifier import SuperFastClassifier
+        from classifiers import SuperFastClassifier
         super_classifier = SuperFastClassifier(logic)
         
         start_time = time.time()
@@ -92,7 +94,7 @@ def speed_comparison_test():
     # Test 3: Original Docker LLM
     print("\n3️⃣  Testing Original Docker LLM Classifier")
     try:
-        from docker_llm_classifier import DockerLLMClassifier
+        from classifiers import DockerLLMClassifier
         llm_classifier = DockerLLMClassifier(logic)
         
         if llm_classifier.available:
@@ -122,7 +124,7 @@ def speed_comparison_test():
     # Test 4: Fast LLM Classifier
     print("\n4️⃣  Testing Fast LLM Classifier (Optimized)")
     try:
-        from fast_llm_classifier import FastLLMClassifier
+        from classifiers import FastLLMClassifier
         fast_classifier = FastLLMClassifier(logic)
         
         if fast_classifier.available:

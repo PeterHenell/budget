@@ -6,10 +6,10 @@ while running completely local.
 
 import os
 import re
+import math
 from datetime import datetime
 from typing import List, Dict, Tuple, Optional
 from collections import Counter
-import math
 
 
 class TransactionClassifier:
@@ -278,7 +278,7 @@ class AutoClassificationEngine:
         
         # Priority 1: SuperFast classifier (hybrid rule+LLM, best of both worlds)
         try:
-            from super_fast_classifier import SuperFastClassifier
+            from .super_fast_classifier import SuperFastClassifier
             super_fast = SuperFastClassifier(self.logic)
             self.classifiers.append(super_fast)
             print("✅ SuperFast Classifier (Rule+LLM hybrid) - PRIORITY #1")
@@ -304,7 +304,7 @@ class AutoClassificationEngine:
         # Priority 3: Fast LLM classifier (fallback pure LLM)
         if not llm_added:
             try:
-                from fast_llm_classifier import FastLLMClassifier
+                from .fast_llm_classifier import FastLLMClassifier
                 fast_llm = FastLLMClassifier(self.logic)
                 if fast_llm.available:
                     self.classifiers.append(fast_llm)

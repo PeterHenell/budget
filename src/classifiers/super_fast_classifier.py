@@ -6,7 +6,7 @@ Uses intelligent routing: simple cases use rules, complex cases use LLM
 import re
 import time
 from typing import Tuple, Optional, Dict, List
-from auto_classify import RuleBasedClassifier, TransactionClassifier
+from .auto_classify import RuleBasedClassifier, TransactionClassifier
 
 
 class SuperFastClassifier(TransactionClassifier):
@@ -26,7 +26,7 @@ class SuperFastClassifier(TransactionClassifier):
         # Try to initialize LLM classifier
         self.llm_classifier = None
         try:
-            from fast_llm_classifier import FastLLMClassifier
+            from .fast_llm_classifier import FastLLMClassifier
             self.llm_classifier = FastLLMClassifier(logic)
             if not self.llm_classifier.available:
                 self.llm_classifier = None

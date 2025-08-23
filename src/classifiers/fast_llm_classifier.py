@@ -11,7 +11,7 @@ from typing import Tuple, Optional, List, Dict
 from threading import Lock
 import hashlib
 from collections import OrderedDict
-from auto_classify import TransactionClassifier
+from .auto_classify import TransactionClassifier
 
 
 class FastLLMClassifier(TransactionClassifier):
