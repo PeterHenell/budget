@@ -77,23 +77,102 @@
                 </div>
                 
                 <div id="reportContent" style="display: none;">
-                    <div class="table-responsive">
-                        <table class="table table-hover">
-                            <thead class="table-light">
-                                <tr>
-                                    <th style="width: 25%;">Category</th>
-                                    <th style="width: 20%;">Budget</th>
-                                    <th style="width: 20%;">Spent</th>
-                                    <th style="width: 20%;">Difference</th>
-                                    <th style="width: 15%;">Usage</th>
-                                </tr>
-                            </thead>
-                            <tbody id="reportTableBody">
-                            </tbody>
-                        </table>
+                    <!-- Summary Cards -->
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <div class="card border-primary">
+                                <div class="card-header bg-primary text-white">
+                                    <h5 class="mb-0">
+                                        <i class="bi bi-pie-chart me-2"></i>Overall Budget Performance
+                                    </h5>
+                                </div>
+                                <div class="card-body">
+                                    <div class="row text-center">
+                                        <div class="col-6">
+                                            <h3 class="text-primary mb-1" id="totalBudgetLarge">0 SEK</h3>
+                                            <p class="text-muted mb-0">Total Budget</p>
+                                        </div>
+                                        <div class="col-6">
+                                            <h3 class="text-danger mb-1" id="totalSpentLarge">0 SEK</h3>
+                                            <p class="text-muted mb-0">Total Spent</p>
+                                        </div>
+                                    </div>
+                                    <div class="mt-3">
+                                        <div class="d-flex justify-content-between align-items-center mb-2">
+                                            <span>Budget Usage</span>
+                                            <span id="budgetUsagePercent" class="fw-bold">0%</span>
+                                        </div>
+                                        <div class="progress" style="height: 12px;">
+                                            <div id="budgetUsageBar" class="progress-bar" role="progressbar" style="width: 0%"></div>
+                                        </div>
+                                        <div class="mt-2">
+                                            <span id="budgetDifferenceText" class="fw-bold">0 SEK remaining</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <div class="card border-info">
+                                <div class="card-header bg-info text-white">
+                                    <h5 class="mb-0">
+                                        <i class="bi bi-graph-up me-2"></i>Category Performance
+                                    </h5>
+                                </div>
+                                <div class="card-body">
+                                    <div class="row text-center mb-3">
+                                        <div class="col-4">
+                                            <h4 class="text-success mb-1" id="categoriesUnderBudget">0</h4>
+                                            <p class="text-muted mb-0 small">Under Budget</p>
+                                        </div>
+                                        <div class="col-4">
+                                            <h4 class="text-warning mb-1" id="categoriesOnTrack">0</h4>
+                                            <p class="text-muted mb-0 small">On Track</p>
+                                        </div>
+                                        <div class="col-4">
+                                            <h4 class="text-danger mb-1" id="categoriesOverBudget">0</h4>
+                                            <p class="text-muted mb-0 small">Over Budget</p>
+                                        </div>
+                                    </div>
+                                    <div id="topSpendingCategory" class="text-center">
+                                        <p class="mb-1">Highest Spending:</p>
+                                        <h5 class="text-primary mb-0" id="topCategoryName">-</h5>
+                                        <span class="text-muted" id="topCategoryAmount">0 SEK</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                     
-                    <div class="mt-4 p-3 bg-light rounded">
+                    <!-- Detailed Category Table -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">
+                                <i class="bi bi-table me-2"></i>Category-wise Spending vs Budget
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-hover">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th style="width: 25%;">Category</th>
+                                            <th style="width: 18%;">Budget</th>
+                                            <th style="width: 18%;">Spent</th>
+                                            <th style="width: 18%;">Difference</th>
+                                            <th style="width: 21%;">Usage</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="reportTableBody">
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Summary Footer -->
+                    <div class="mt-3 p-3 bg-light rounded">
                         <div class="row">
                             <div class="col-md-3">
                                 <div class="text-center">
@@ -133,15 +212,26 @@
     </div>
 </div>
 
-<!-- Chart Section -->
+<!-- Charts Section -->
 <div class="row mt-4" id="chartSection" style="display: none;">
-    <div class="col-12">
+    <div class="col-lg-6">
         <div class="card">
             <div class="card-header">
-                <i class="bi bi-pie-chart me-2"></i>Spending Breakdown
+                <i class="bi bi-pie-chart me-2"></i>Spending Distribution
             </div>
             <div class="card-body">
-                <canvas id="spendingChart" width="400" height="200"></canvas>
+                <canvas id="spendingChart" width="400" height="400"></canvas>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-bar-chart me-2"></i>Budget vs Spending Comparison
+            </div>
+            <div class="card-body">
+                <canvas id="comparisonChart" width="400" height="400"></canvas>
             </div>
         </div>
     </div>
@@ -155,6 +245,7 @@
 <script>
     let currentReportData = null;
     let spendingChart = null;
+    let comparisonChart = null;
     
     document.addEventListener('DOMContentLoaded', function() {
         // Set current month as default
@@ -190,7 +281,8 @@
                 throw new Error(data.error);
             }
             
-            currentReportData = data.report || [];
+            // Handle the nested response structure
+            currentReportData = data.report || data || [];
             
             // Update title
             const reportType = month ? 
@@ -202,8 +294,10 @@
             loadingDiv.style.display = 'none';
             
             if (currentReportData.length > 0) {
+                renderReportSummary();
                 renderReportTable();
                 renderSpendingChart();
+                renderComparisonChart();
                 contentDiv.style.display = 'block';
                 chartSection.style.display = 'block';
                 document.getElementById('exportBtn').disabled = false;
@@ -220,6 +314,71 @@
         }
     }
     
+    function renderReportSummary() {
+        let totalBudget = 0;
+        let totalSpent = 0;
+        let categoriesUnderBudget = 0;
+        let categoriesOnTrack = 0;
+        let categoriesOverBudget = 0;
+        let topSpending = { category: '-', amount: 0 };
+        
+        currentReportData.forEach(item => {
+            const budget = item.budget || 0;
+            const spending = Math.abs(item.spent || item.spending || 0);
+            const percentage = budget > 0 ? (spending / budget * 100) : 0;
+            
+            totalBudget += budget;
+            totalSpent += spending;
+            
+            // Track category performance
+            if (percentage < 80) {
+                categoriesUnderBudget++;
+            } else if (percentage <= 100) {
+                categoriesOnTrack++;
+            } else {
+                categoriesOverBudget++;
+            }
+            
+            // Track highest spending
+            if (spending > topSpending.amount) {
+                topSpending = { category: item.category, amount: spending };
+            }
+        });
+        
+        const totalDifference = totalBudget - totalSpent;
+        const totalUsagePercent = totalBudget > 0 ? (totalSpent / totalBudget * 100) : 0;
+        
+        // Update large summary cards
+        document.getElementById('totalBudgetLarge').textContent = `${totalBudget.toLocaleString('sv-SE')} SEK`;
+        document.getElementById('totalSpentLarge').textContent = `${totalSpent.toLocaleString('sv-SE')} SEK`;
+        
+        // Update budget usage progress bar
+        const usagePercent = Math.min(totalUsagePercent, 100);
+        const usageColor = totalUsagePercent > 100 ? 'bg-danger' : totalUsagePercent > 80 ? 'bg-warning' : 'bg-success';
+        
+        document.getElementById('budgetUsagePercent').textContent = `${totalUsagePercent.toFixed(1)}%`;
+        document.getElementById('budgetUsagePercent').className = totalUsagePercent > 100 ? 'fw-bold text-danger' : totalUsagePercent > 80 ? 'fw-bold text-warning' : 'fw-bold text-success';
+        
+        const progressBar = document.getElementById('budgetUsageBar');
+        progressBar.style.width = `${usagePercent}%`;
+        progressBar.className = `progress-bar ${usageColor}`;
+        
+        // Update difference text
+        const diffText = totalDifference >= 0 ? `${totalDifference.toLocaleString('sv-SE')} SEK remaining` : `${Math.abs(totalDifference).toLocaleString('sv-SE')} SEK over budget`;
+        const diffClass = totalDifference >= 0 ? 'fw-bold text-success' : 'fw-bold text-danger';
+        document.getElementById('budgetDifferenceText').textContent = diffText;
+        document.getElementById('budgetDifferenceText').className = diffClass;
+        
+        // Update category performance
+        document.getElementById('categoriesUnderBudget').textContent = categoriesUnderBudget;
+        document.getElementById('categoriesOnTrack').textContent = categoriesOnTrack;
+        document.getElementById('categoriesOverBudget').textContent = categoriesOverBudget;
+        
+        // Update top spending category
+        document.getElementById('topCategoryName').textContent = topSpending.category;
+        document.getElementById('topCategoryAmount').textContent = `${topSpending.amount.toLocaleString('sv-SE')} SEK`;
+    }
+    
     function renderReportTable() {
         const tbody = document.getElementById('reportTableBody');
         let totalBudget = 0;
@@ -227,7 +386,7 @@
         
         const rows = currentReportData.map(item => {
             const budget = item.budget || 0;
-            const spending = Math.abs(item.spending || 0);
+            const spending = Math.abs(item.spent || item.spending || 0);
             const difference = budget - spending;
             const percentage = budget > 0 ? (spending / budget * 100) : 0;
             
@@ -240,17 +399,19 @@
             return `
                 <tr>
                     <td class="fw-medium">${item.category}</td>
-                    <td>${budget.toLocaleString('sv-SE')} SEK</td>
-                    <td class="text-danger">${spending.toLocaleString('sv-SE')} SEK</td>
-                    <td class="${diffClass} fw-bold">${Math.abs(difference).toLocaleString('sv-SE')} SEK</td>
+                    <td class="text-primary fw-medium">${budget.toLocaleString('sv-SE')} SEK</td>
+                    <td class="text-danger fw-medium">${spending.toLocaleString('sv-SE')} SEK</td>
+                    <td class="${diffClass} fw-bold">
+                        ${difference >= 0 ? '+' : ''}${difference.toLocaleString('sv-SE')} SEK
+                    </td>
                     <td>
                         <div class="d-flex align-items-center">
-                            <div class="progress flex-grow-1 me-2" style="height: 6px;">
+                            <div class="progress flex-grow-1 me-2" style="height: 8px;">
                                 <div class="progress-bar ${usageClass.replace('text-', 'bg-')}" 
                                      style="width: ${Math.min(percentage, 100)}%"></div>
                             </div>
-                            <span class="${usageClass} fw-bold" style="min-width: 40px;">
-                                ${percentage.toFixed(0)}%
+                            <span class="${usageClass} fw-bold" style="min-width: 50px;">
+                                ${percentage.toFixed(1)}%
                             </span>
                         </div>
                     </td>
@@ -260,7 +421,7 @@
         
         tbody.innerHTML = rows;
         
-        // Update totals
+        // Update totals (bottom summary)
         const totalDifference = totalBudget - totalSpent;
         const totalUsage = totalBudget > 0 ? (totalSpent / totalBudget * 100) : 0;
         
@@ -280,9 +441,23 @@
             spendingChart.destroy();
         }
         
-        // Prepare data
-        const categories = currentReportData.map(item => item.category);
-        const spending = currentReportData.map(item => Math.abs(item.spending || 0));
+        // Prepare data - only show categories with spending
+        const dataWithSpending = currentReportData.filter(item => {
+            const spending = Math.abs(item.spent || item.spending || 0);
+            return spending > 0;
+        });
+        
+        if (dataWithSpending.length === 0) {
+            // Show message if no spending data
+            ctx.font = '16px Arial';
+            ctx.fillStyle = '#6c757d';
+            ctx.textAlign = 'center';
+            ctx.fillText('No spending data to display', ctx.canvas.width / 2, ctx.canvas.height / 2);
+            return;
+        }
+        
+        const categories = dataWithSpending.map(item => item.category);
+        const spending = dataWithSpending.map(item => Math.abs(item.spent || item.spending || 0));
         const colors = generateColors(categories.length);
         
         spendingChart = new Chart(ctx, {
@@ -301,7 +476,13 @@
                 maintainAspectRatio: false,
                 plugins: {
                     legend: {
-                        position: 'right'
+                        position: 'bottom',
+                        labels: {
+                            padding: 20,
+                            font: {
+                                size: 12
+                            }
+                        }
                     },
                     tooltip: {
                         callbacks: {
@@ -310,6 +491,77 @@
                                 const total = context.dataset.data.reduce((a, b) => a + b, 0);
                                 const percentage = ((value / total) * 100).toFixed(1);
                                 return `${context.label}: ${value.toLocaleString('sv-SE')} SEK (${percentage}%)`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+    
+    function renderComparisonChart() {
+        const ctx = document.getElementById('comparisonChart').getContext('2d');
+        
+        // Destroy existing chart
+        if (comparisonChart) {
+            comparisonChart.destroy();
+        }
+        
+        // Prepare data
+        const categories = currentReportData.map(item => item.category);
+        const budgets = currentReportData.map(item => item.budget || 0);
+        const spending = currentReportData.map(item => Math.abs(item.spent || item.spending || 0));
+        
+        comparisonChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: categories,
+                datasets: [
+                    {
+                        label: 'Budget',
+                        data: budgets,
+                        backgroundColor: 'rgba(54, 162, 235, 0.8)',
+                        borderColor: 'rgba(54, 162, 235, 1)',
+                        borderWidth: 2
+                    },
+                    {
+                        label: 'Spent',
+                        data: spending,
+                        backgroundColor: 'rgba(255, 99, 132, 0.8)',
+                        borderColor: 'rgba(255, 99, 132, 1)',
+                        borderWidth: 2
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'top',
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return `${context.dataset.label}: ${context.parsed.y.toLocaleString('sv-SE')} SEK`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        ticks: {
+                            maxRotation: 45,
+                            font: {
+                                size: 10
+                            }
+                        }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) {
+                                return value.toLocaleString('sv-SE') + ' SEK';
                             }
                         }
                     }
@@ -347,28 +599,69 @@
     function exportReport() {
         if (!currentReportData) return;
         
-        // Simple CSV export
         const year = document.getElementById('reportYear').value;
         const month = document.getElementById('reportMonth').value;
+        const monthName = month ? getMonthName(parseInt(month)) : '';
         
-        const headers = ['Category', 'Budget', 'Spent', 'Difference', 'Usage %'];
+        // Calculate summary data
+        const totalBudget = currentReportData.reduce((sum, item) => sum + (item.budget || 0), 0);
+        const totalSpent = currentReportData.reduce((sum, item) => sum + Math.abs(item.spent || item.spending || 0), 0);
+        const totalDifference = totalBudget - totalSpent;
+        const overallUsage = totalBudget > 0 ? (totalSpent / totalBudget * 100) : 0;
+        
+        // Count categories by status
+        let underBudget = 0, onTrack = 0, overBudget = 0;
+        currentReportData.forEach(item => {
+            const budget = item.budget || 0;
+            const spent = Math.abs(item.spent || item.spending || 0);
+            const percentage = budget > 0 ? (spent / budget * 100) : 0;
+            
+            if (percentage < 80) underBudget++;
+            else if (percentage <= 100) onTrack++;
+            else overBudget++;
+        });
+        
+        // Create comprehensive CSV with summary and detailed data
+        const summarySection = [
+            [`Budget Report - ${monthName} ${year}`],
+            [],
+            ['SUMMARY'],
+            ['Total Budget', totalBudget.toLocaleString('sv-SE') + ' SEK'],
+            ['Total Spent', totalSpent.toLocaleString('sv-SE') + ' SEK'],
+            ['Difference', totalDifference.toLocaleString('sv-SE') + ' SEK'],
+            ['Overall Usage', overallUsage.toFixed(1) + '%'],
+            [],
+            ['CATEGORY STATUS'],
+            ['Under Budget (<80%)', underBudget],
+            ['On Track (80-100%)', onTrack],
+            ['Over Budget (>100%)', overBudget],
+            [],
+            ['DETAILED BREAKDOWN']
+        ];
+        
+        const headers = ['Category', 'Budget (SEK)', 'Spent (SEK)', 'Difference (SEK)', 'Usage %', 'Status'];
         const rows = currentReportData.map(item => {
             const budget = item.budget || 0;
-            const spending = Math.abs(item.spending || 0);
+            const spending = Math.abs(item.spent || item.spending || 0);
             const difference = budget - spending;
             const percentage = budget > 0 ? (spending / budget * 100) : 0;
             
+            let status = 'Under Budget';
+            if (percentage > 100) status = 'Over Budget';
+            else if (percentage >= 80) status = 'On Track';
+            
             return [
                 item.category,
-                budget,
-                spending,
-                difference,
-                percentage.toFixed(2)
+                budget.toLocaleString('sv-SE'),
+                spending.toLocaleString('sv-SE'),
+                difference.toLocaleString('sv-SE'),
+                percentage.toFixed(2) + '%',
+                status
             ];
         });
         
-        const csvContent = [headers, ...rows]
-            .map(row => row.join(','))
+        const csvContent = [...summarySection, [headers.join(',')], ...rows.map(row => row.join(','))]
+            .map(row => Array.isArray(row) ? row.join(',') : row)
             .join('\n');
         
         const blob = new Blob([csvContent], { type: 'text/csv' });
@@ -381,7 +674,7 @@
         document.body.removeChild(a);
         window.URL.revokeObjectURL(url);
         
-        showToast('Report exported successfully', 'success');
+        showToast('Enhanced report exported successfully', 'success');
     }
     
     function getMonthName(monthNumber) {
