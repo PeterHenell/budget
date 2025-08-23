@@ -405,17 +405,32 @@ def api_uncategorized():
         
         uncategorized = logic.get_uncategorized_transactions()
         
-        # Simple pagination
+        # Convert tuples to dictionaries with proper field names
+        formatted_transactions = []
+        for tx in uncategorized:
+            tx_id, verif_num, date, description, amount, year, month = tx
+            formatted_transactions.append({
+                'id': tx_id,
+                'verifikationsnummer': verif_num,
+                'date': date.strftime('%Y-%m-%d') if hasattr(date, 'strftime') else str(date),
+                'description': description,
+                'amount': float(amount),
+                'year': year,
+                'month': month
+            })
+        
+        # Simple pagination on formatted data
         start = (page - 1) * per_page
         end = start + per_page
-        transactions = uncategorized[start:end]
+        transactions = formatted_transactions[start:end]
         
         return jsonify({
             'transactions': transactions,
-            'total': len(uncategorized),
+            'total': len(formatted_transactions),
+            'total_uncategorized': len(formatted_transactions),  # Add this for compatibility
             'page': page,
             'per_page': per_page,
-            'pages': (len(uncategorized) + per_page - 1) // per_page
+            'pages': (len(formatted_transactions) + per_page - 1) // per_page
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
