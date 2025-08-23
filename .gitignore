@@ -98,3 +98,4 @@ postgres_data/
 
 # Docker build context
 .dockerignore
+cookies.txt
