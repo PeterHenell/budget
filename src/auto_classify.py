@@ -5,7 +5,6 @@ while running completely local.
 """
 
 import re
-import sqlite3
 from datetime import datetime
 from typing import List, Dict, Tuple, Optional
 from collections import Counter

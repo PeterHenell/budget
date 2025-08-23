@@ -543,9 +543,25 @@ def api_auto_classify():
         return jsonify({'error': 'Database connection failed'}), 500
     
     try:
-        # Auto-classification would need to be implemented
-        # For now, return not implemented
-        return jsonify({'error': 'Auto-classification not implemented yet'}), 501
+        data = request.get_json()
+        confidence_threshold = float(data.get('confidence_threshold', 0.8))
+        max_suggestions = int(data.get('max_suggestions', 100))
+        
+        # Initialize the auto-classification engine
+        engine = AutoClassificationEngine(logic)
+        
+        # Perform auto-classification
+        classified_count, suggestions = engine.auto_classify_uncategorized(
+            confidence_threshold=confidence_threshold,
+            max_suggestions=max_suggestions
+        )
+        
+        return jsonify({
+            'success': True,
+            'classified_count': classified_count,
+            'suggestions_count': len(suggestions),
+            'suggestions': suggestions[:20]  # Limit to 20 for response size
+        })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
