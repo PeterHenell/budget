@@ -298,47 +298,6 @@ class DatabaseInitializer:
         except psycopg2.Error as e:
             raise Exception(f"Failed to create admin user: {e}")
     
-    def upgrade_existing_database(self):
-        """Apply any necessary database upgrades to existing schemas"""
-        print("Checking for database upgrades...")
-        
-        try:
-            c = self.conn.cursor()
-            
-            # Add role column to users table if it doesn't exist
-            try:
-                c.execute("""
-                    ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(50) DEFAULT 'user'
-                """)
-                print("  - Added role column to users table")
-            except psycopg2.Error:
-                pass
-            
-            # Add timestamps to tables if they don't exist
-            timestamp_columns = [
-                ("categories", "created_at"),
-                ("budgets", "created_at"),
-                ("budgets", "updated_at"),
-                ("transactions", "created_at"),
-                ("transactions", "updated_at"),
-                ("users", "updated_at")
-            ]
-            
-            for table, column in timestamp_columns:
-                try:
-                    c.execute(f"""
-                        ALTER TABLE {table} 
-                        ADD COLUMN IF NOT EXISTS {column} TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                    """)
-                    print(f"  - Added {column} to {table}")
-                except psycopg2.Error:
-                    pass
-            
-            print("  ✓ Database upgrades completed")
-            
-        except psycopg2.Error as e:
-            print(f"  ⚠ Some database upgrades failed: {e}")
-    
     def initialize_database(self, skip_admin: bool = False):
         """Run complete database initialization"""
         print("=" * 50)
@@ -354,7 +313,6 @@ class DatabaseInitializer:
             
             self.create_tables()
             self.create_indexes()
-            self.upgrade_existing_database()
             self.insert_default_categories()
             
             if not skip_admin:

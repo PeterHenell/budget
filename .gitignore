@@ -100,3 +100,4 @@ postgres_data/
 .dockerignore
 cookies.txt
 ollama-models/*
+sample-csv/*

@@ -173,7 +173,7 @@ def login():
                 session['is_admin'] = logic.db.is_admin(username)
                 
                 standardize_flash_message(f'Welcome back, {username}!', 'success', 'info')
-                return redirect(url_for('dashboard'))
+                return redirect(url_for('index'))
             else:
                 standardize_flash_message('Invalid username or password', 'error', 'warning')
         except Exception as e:
@@ -443,7 +443,7 @@ def api_categories():
 
             return jsonify({'error': 'Database connection failed'}), 500
         categories = logic.get_categories()
-        return jsonify(categories)
+        return jsonify({'categories': categories})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
